@@ -8,10 +8,11 @@ defmodule Acs.Memory.HybridSearch do
   - Scope: exact / parent / sibling heuristics
   - Metadata: importance + status
   - Audience: exact / legacy / mismatch
+  - Repo: current-repo match (org-wide neutral, other repos down-ranked)
 
   Default blend (overridable via `config :steward_acs, Acs.Memory.HybridSearch, weights: %{...}`):
 
-      total = 0.25*semantic + 0.15*lexical + 0.30*scope + 0.10*metadata + 0.20*audience
+      total = 0.25*semantic + 0.15*lexical + 0.25*scope + 0.10*metadata + 0.15*audience + 0.10*repo
 
   This total is a ranking score, not a calibrated probability. Impressions are
   logged via `Acs.Observability.AgentOps.log_search/1` so weights can be refit
@@ -23,14 +24,15 @@ defmodule Acs.Memory.HybridSearch do
   @default_limit 20
   # Raised with scope-heavy weights so weak content-only LIKE hits stay out.
   @default_min_score 0.45
-  @weight_version "v2-sem0.25-lex0.15-scope0.30-meta0.10-aud0.20"
+  @weight_version "v3-sem0.25-lex0.15-scope0.25-meta0.10-aud0.15-repo0.10"
 
   @default_weights %{
     semantic: 0.25,
     lexical: 0.15,
-    scope: 0.30,
+    scope: 0.25,
     metadata: 0.10,
-    audience: 0.20
+    audience: 0.15,
+    repo: 0.10
   }
 
   @doc """
@@ -45,6 +47,9 @@ defmodule Acs.Memory.HybridSearch do
   - `:weights` - map override `%{semantic:, lexical:, scope:, metadata:, audience:}`
   - `:embedding` - precomputed query embedding (skips Ollama when provided)
   - `:org` - tenant filter for vector search
+  - `:repo` - filter to exactly this repo
+  - `:current_repo` - the caller's repo for repo-aware ranking/labels
+  - `:repo_mode` - `:local` (current repo + org-wide), `:exact` (current repo only), `:blended` (default, down-rank other repos)
   - `:log_search` - set `false` to skip impression telemetry (tests)
   """
   # Title match (0.7+) is a strong exact signal; keep it even when weighted total
@@ -61,6 +66,8 @@ defmodule Acs.Memory.HybridSearch do
     team_filter = Keyword.get(opts, :team_filter)
     project_filter = Keyword.get(opts, :project_filter)
     org = Keyword.get(opts, :org) || Acs.Org.current()
+    current_repo = opts[:current_repo]
+    repo = opts[:repo]
 
     query_embedding = get_query_embedding(query, opts)
 
@@ -72,7 +79,7 @@ defmodule Acs.Memory.HybridSearch do
 
     # Lexical DB scan and vector ANN in parallel once embedding is ready.
     {lexical_results, semantic_scores} =
-      run_lexical_and_semantic(query, lexical_opts, query_embedding, org, limit)
+      run_lexical_and_semantic(query, lexical_opts, query_embedding, org, limit, opts)
 
     scored_results =
       lexical_results
@@ -80,6 +87,7 @@ defmodule Acs.Memory.HybridSearch do
         semantic = Map.get(semantic_scores, memory.id, 0.0)
         lexical = compute_lexical_score(memory, query)
         scope_score = compute_scope_score(memory.scope_path, scope)
+        repo_score = compute_repo_score(memory.repo, current_repo, repo)
 
         meta =
           compute_metadata_score(memory, team_filter: team_filter, project_filter: project_filter)
@@ -91,7 +99,8 @@ defmodule Acs.Memory.HybridSearch do
             weights.lexical * lexical +
             weights.scope * scope_score +
             weights.metadata * meta +
-            weights.audience * aud
+            weights.audience * aud +
+            weights.repo * repo_score
 
         %{
           memory_id: memory.id,
@@ -100,12 +109,17 @@ defmodule Acs.Memory.HybridSearch do
           kind: memory.kind,
           status: memory.status,
           importance: memory.importance,
+          repo: memory.repo,
+          origin: memory.origin,
+          cross_repo:
+            is_binary(current_repo) and is_binary(memory.repo) and memory.repo != current_repo,
           scores: %{
             semantic: semantic,
             lexical: lexical,
             scope: scope_score,
             metadata: meta,
-            audience: aud
+            audience: aud,
+            repo: repo_score
           },
           total_score: Float.round(total, 4)
         }
@@ -172,7 +186,9 @@ defmodule Acs.Memory.HybridSearch do
             "lexical" => r.scores.lexical,
             "scope" => r.scores.scope,
             "metadata" => r.scores.metadata,
-            "audience" => r.scores.audience
+            "audience" => r.scores.audience,
+            "repo" => r.scores.repo,
+            "cross_repo" => r.cross_repo
           }
         end)
 
@@ -211,7 +227,7 @@ defmodule Acs.Memory.HybridSearch do
     {Indexer.search(query, lexical_opts), %{}}
   end
 
-  defp run_lexical_and_semantic(query, lexical_opts, embedding, org, limit) do
+  defp run_lexical_and_semantic(query, lexical_opts, embedding, org, limit, opts) do
     vector_limit = max(limit * 10, 100)
 
     lexical_task =
@@ -222,7 +238,14 @@ defmodule Acs.Memory.HybridSearch do
     semantic_task =
       Task.async(fn ->
         Acs.Org.with_current(org, fn ->
-          VectorIndex.search_similar(embedding, limit: vector_limit, org: org)
+          VectorIndex.search_similar(embedding,
+            limit: vector_limit,
+            org: org,
+            current_repo: opts[:current_repo],
+            repo: opts[:repo],
+            repo_mode: opts[:repo_mode] || :blended,
+            origin: opts[:origin]
+          )
           |> Map.new(fn %{memory_id: id, similarity: sim} -> {id, sim} end)
         end)
       end)
@@ -299,6 +322,24 @@ defmodule Acs.Memory.HybridSearch do
     cond do
       mem == req -> 1.0
       is_nil(mem) or mem == "" -> 0.5
+      true -> 0.2
+    end
+  end
+
+  # Repo ranking: exact `repo` filter always scores full. Without a current
+  # repo context, stay neutral (0.5) so legacy searches are unaffected. With
+  # context: current-repo memories score 1.0, org-wide (repo nil) 0.6, any
+  # other repo 0.2 — down-ranked but still eligible in blended mode.
+  defp compute_repo_score(_mem_repo, _current_repo, repo) when is_binary(repo), do: 1.0
+
+  defp compute_repo_score(_mem_repo, nil, _repo), do: 0.5
+
+  defp compute_repo_score(mem_repo, current_repo, _repo) do
+    mem = mem_repo && String.trim(mem_repo)
+
+    cond do
+      mem == current_repo -> 1.0
+      is_nil(mem) or mem == "" -> 0.6
       true -> 0.2
     end
   end

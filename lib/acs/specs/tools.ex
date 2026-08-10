@@ -75,6 +75,8 @@ defmodule Acs.Specs.Tools do
     %{
       "app" => entry.app,
       "path" => entry.id,
+      "repo" => entry.repo,
+      "origin" => entry.origin,
       "title" => entry.title,
       "content" => entry.content || ""
     }
@@ -85,6 +87,8 @@ defmodule Acs.Specs.Tools do
     %{
       "app" => entry.app,
       "path" => entry.id,
+      "repo" => entry.repo,
+      "origin" => entry.origin,
       "title" => entry.title,
       "purpose" => entry.purpose,
       "invariants" => entry.invariants,
@@ -104,6 +108,8 @@ defmodule Acs.Specs.Tools do
     %{
       "app" => entry.app,
       "path" => entry.id,
+      "repo" => entry.repo,
+      "origin" => entry.origin,
       "title" => entry.title,
       "document_type" => entry.document_type,
       "purpose" => entry.purpose
@@ -115,6 +121,8 @@ defmodule Acs.Specs.Tools do
     %{
       "app" => Map.get(chunk, :app),
       "path" => Map.get(chunk, :path),
+      "repo" => Map.get(chunk, :repo),
+      "origin" => Map.get(chunk, :origin),
       "title" => Map.get(chunk, :path) || Map.get(chunk, :context),
       "purpose" => Map.get(chunk, :context),
       "chunk" => true
@@ -134,7 +142,11 @@ defmodule Acs.Specs.Tools do
   end
 
   defp build_search_opts(args) do
-    opts = []
+    opts = [
+      current_repo: args["_auth_repo"],
+      repo_mode: args["repo_mode"] || "blended",
+      origin: args["origin"]
+    ]
 
     opts =
       if args["status"] do
@@ -163,6 +175,11 @@ defmodule Acs.Specs.Tools do
            args
            |> Map.drop(["app", "path"])
            |> Map.take(@allowed_fields)
+           |> Map.put("repo", args["_auth_repo"])
+           |> Map.put(
+             "origin",
+             if(args["_auth_audience"] == "chat", do: "chat_agent", else: "coding_agent")
+           )
            |> maybe_put_proposed_by(args),
          :ok <- Abac.validate_write(ctx, attrs),
          :ok <- ensure_entry_writable(ctx, args["app"], args["path"]) do
@@ -217,7 +234,11 @@ defmodule Acs.Specs.Tools do
                   chunk.chunk_index,
                   chunk.source,
                   chunk.content,
-                  embedding
+                  embedding,
+                  Acs.Org.current(),
+                  Acs.Repo,
+                  repo: entry.repo,
+                  origin: entry.origin
                 )
 
               {_chunk, {:error, reason}} ->

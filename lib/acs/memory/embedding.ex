@@ -512,7 +512,11 @@ defmodule Acs.Memory.Embedding do
     # Generate embedding
     case embed_text(retrieval_text) do
       {:ok, embedding} ->
-        VectorIndex.upsert_embedding(schema.id, embedding)
+        VectorIndex.upsert_embedding(schema.id, embedding, schema.org, Acs.Repo,
+          repo: schema.repo,
+          origin: schema.origin
+        )
+
         :ok
 
       {:error, reason} ->

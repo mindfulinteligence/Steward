@@ -83,7 +83,9 @@ defmodule Acs.MCP.Tools.SkillHandlers do
         field(skill, :when_to_use) || meta_get(meta, "when_to_use") ||
           meta_get(skill, "when_to_use"),
       tags: field(skill, :tags) || meta_get(skill, "tags") || [],
-      scope_paths: field(skill, :scope_paths) || meta_get(skill, "scope_paths") || []
+      scope_paths: field(skill, :scope_paths) || meta_get(skill, "scope_paths") || [],
+      repo: field(skill, :repo) || meta_get(meta, "repo"),
+      origin: field(skill, :origin) || meta_get(meta, "origin")
     }
   end
 
@@ -148,6 +150,8 @@ defmodule Acs.MCP.Tools.SkillHandlers do
                blank_to_nil(args["_auth_attribution"]) ||
                  blank_to_nil(args["_auth_agent_id"]) ||
                  blank_to_nil(args["agent_id"]),
+             repo: args["_auth_repo"],
+             origin: if(args["_auth_audience"] == "chat", do: "chat_agent", else: "coding_agent"),
              actor: %{
                type: "developer_key",
                id:

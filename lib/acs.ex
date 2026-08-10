@@ -335,10 +335,13 @@ defmodule Acs do
   @doc """
   Locks a file for an agent.
   """
-  def lock_file(file_path, agent_id, task_id)
+  def lock_file(file_path, agent_id, task_id, repo \\ nil)
       when is_binary(file_path) and is_binary(agent_id) and is_binary(task_id) do
     task = get_task(task_id)
     task_id = if is_nil(task), do: task_id, else: task.id
+
+    requested_repo =
+      Acs.Repos.normalize(repo) || Acs.Repos.normalize(task && task.repo) || Acs.Repos.repo()
 
     # Idempotent: already locked by this agent for this file = success
     case Repo.get_by(FileLock,
@@ -347,7 +350,7 @@ defmodule Acs do
            org: Org.current()
          ) do
       %FileLock{task_id: ^task_id} ->
-        {:ok, %{status: "already_locked", file_path: file_path}}
+        {:ok, %{status: "already_locked", file_path: file_path, repo: task && task.repo}}
 
       %FileLock{} ->
         # Locked by different agent or different task
@@ -371,38 +374,59 @@ defmodule Acs do
           not is_nil(task.locked_by_agent) and task.locked_by_agent != agent_id ->
             {:error, :task_not_locked_by_agent}
 
+          is_nil(requested_repo) ->
+            {:error, :repo_context_required}
+
+          not is_nil(task.repo) and task.repo != requested_repo ->
+            {:error, :repo_mismatch}
+
           true ->
             now = DateTime.utc_now()
             auto_release = DateTime.add(now, 10, :minute)
 
-            %FileLock{}
-            |> FileLock.changeset(%{
-              "file_path" => file_path,
-              "locked_by_agent" => agent_id,
-              "task_id" => task_id,
-              "org" => Org.current(),
-              "locked_at" => now,
-              "auto_release_at" => auto_release
-            })
-            |> Repo.insert()
-            |> case do
-              {:ok, lock} ->
-                Cache.put_file_lock(file_path, to_file_lock_map(lock))
+            task_result =
+              if is_nil(task.repo) do
+                task |> AcsTask.changeset(%{"repo" => requested_repo}) |> Repo.update()
+              else
+                {:ok, task}
+              end
 
-                broadcast(:file_locked, %{
-                  file_path: file_path,
-                  agent_id: agent_id,
-                  task_id: task_id
-                })
+            with {:ok, updated_task} <- task_result,
+                 {:ok, lock} <-
+                   %FileLock{}
+                   |> FileLock.changeset(%{
+                     "file_path" => file_path,
+                     "locked_by_agent" => agent_id,
+                     "task_id" => task_id,
+                     "org" => Org.current(),
+                     "locked_at" => now,
+                     "auto_release_at" => auto_release
+                   })
+                   |> Repo.insert() do
+              Cache.put_task(updated_task.id, to_task_map(updated_task))
+              Cache.put_file_lock(file_path, to_file_lock_map(lock))
 
-                scope_path = scope_from_file_path(file_path)
+              broadcast(:file_locked, %{
+                file_path: file_path,
+                agent_id: agent_id,
+                task_id: task_id,
+                repo: updated_task.repo
+              })
 
-                guidance =
-                  if scope_path != "", do: Guidance.generate(scope_path, tier: :claim), else: %{}
+              scope_path = scope_from_file_path(file_path)
 
-                {:ok, %{status: "locked", file_path: file_path, guidance: guidance}}
+              guidance =
+                if scope_path != "", do: Guidance.generate(scope_path, tier: :claim), else: %{}
 
-              {:error, changeset} ->
+              {:ok,
+               %{
+                 status: "locked",
+                 file_path: file_path,
+                 repo: updated_task.repo,
+                 guidance: guidance
+               }}
+            else
+              {:error, changeset} when is_struct(changeset, Ecto.Changeset) ->
                 errors = inspect(changeset.errors)
 
                 if String.contains?(errors, "unique_constraint") do
@@ -410,6 +434,9 @@ defmodule Acs do
                 else
                   {:error, "Lock failed: #{format_changeset_errors(changeset)}"}
                 end
+
+              {:error, reason} ->
+                {:error, reason}
             end
         end
     end
@@ -641,6 +668,7 @@ defmodule Acs do
       inserted_at: t.inserted_at,
       event_count: t.event_count,
       file_paths: t.file_paths || [],
+      repo: t.repo,
       org: t.org
     }
   end

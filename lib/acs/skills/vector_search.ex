@@ -13,6 +13,8 @@ defmodule Acs.Skills.VectorSearch do
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           skill_name TEXT NOT NULL,
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding vector(#{Pgvector.dimensions()}) NOT NULL,
           updated_at TIMESTAMPTZ DEFAULT NOW(),
           PRIMARY KEY (skill_name, org)
@@ -28,6 +30,8 @@ defmodule Acs.Skills.VectorSearch do
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           skill_name TEXT NOT NULL,
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding TEXT NOT NULL,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (skill_name, org)
@@ -35,34 +39,55 @@ defmodule Acs.Skills.VectorSearch do
       """)
     end
 
+    ensure_metadata_columns(repo)
+
     :ok
   end
 
-  def upsert_embedding(skill_name, embedding, org \\ Acs.Org.current(), repo \\ Acs.Repo)
+  defp ensure_metadata_columns(repo) do
+    Enum.each(["repo", "origin"], fn column ->
+      case repo.query("SELECT #{column} FROM #{@table_name} LIMIT 0") do
+        {:ok, _} -> :ok
+        _ -> repo.query("ALTER TABLE #{@table_name} ADD COLUMN #{column} TEXT")
+      end
+    end)
+  end
+
+  def upsert_embedding(
+        skill_name,
+        embedding,
+        org \\ Acs.Org.current(),
+        repo \\ Acs.Repo,
+        options \\ []
+      )
       when is_binary(skill_name) and is_list(embedding) and is_binary(org) do
     vector_literal = Pgvector.encode(embedding)
 
     if Pgvector.enabled?(repo) do
       repo.query(
         """
-        INSERT INTO #{@table_name} (skill_name, org, embedding, updated_at)
-        VALUES ($1, $2, ($3::text)::vector, NOW())
+        INSERT INTO #{@table_name} (skill_name, org, repo, origin, embedding, updated_at)
+        VALUES ($1, $2, $3, $4, ($5::text)::vector, NOW())
         ON CONFLICT (skill_name, org) DO UPDATE SET
+          repo = EXCLUDED.repo,
+          origin = EXCLUDED.origin,
           embedding = EXCLUDED.embedding,
           updated_at = EXCLUDED.updated_at
         """,
-        [skill_name, org, vector_literal]
+        [skill_name, org, options[:repo], options[:origin], vector_literal]
       )
     else
       repo.query(
         """
-        INSERT INTO #{@table_name} (skill_name, org, embedding, updated_at)
-        VALUES (?, ?, ?, datetime('now'))
+        INSERT INTO #{@table_name} (skill_name, org, repo, origin, embedding, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(skill_name, org) DO UPDATE SET
+          repo = excluded.repo,
+          origin = excluded.origin,
           embedding = excluded.embedding,
           updated_at = excluded.updated_at
         """,
-        [skill_name, org, vector_literal]
+        [skill_name, org, options[:repo], options[:origin], vector_literal]
       )
     end
 
@@ -89,12 +114,14 @@ defmodule Acs.Skills.VectorSearch do
   def search(query, opts \\ []) when is_binary(query) do
     limit = Keyword.get(opts, :limit, 20)
     org = Pgvector.org_filter(opts)
+    {pg_repo_sql, pg_repo_params} = repo_filter(opts, :pg, if(org, do: 3, else: 2))
+    {sqlite_repo_sql, sqlite_repo_params} = repo_filter(opts, :sqlite, 0)
 
     with {:ok, embedding} <- Pgvector.resolve_embedding(query, opts) do
       if Pgvector.enabled?() do
-        search_pg(embedding, org, limit)
+        search_pg(embedding, org, limit, pg_repo_sql, pg_repo_params)
       else
-        search_sqlite(embedding, org, limit)
+        search_sqlite(embedding, org, limit, sqlite_repo_sql, sqlite_repo_params)
       end
     else
       {:error, reason} ->
@@ -103,32 +130,38 @@ defmodule Acs.Skills.VectorSearch do
     end
   end
 
-  defp search_pg(embedding, org, limit) do
+  defp search_pg(embedding, org, limit, repo_sql, repo_params) do
     vector_literal = Pgvector.encode(embedding)
 
     {sql, params} =
       if org do
         {"""
-         SELECT skill_name, 1 - (embedding <=> ($1::text)::vector) AS similarity
+         SELECT skill_name, repo, origin, 1 - (embedding <=> ($1::text)::vector) AS similarity
          FROM #{@table_name}
-         WHERE org = $2
+         WHERE org = $2#{repo_sql}
          ORDER BY embedding <=> ($1::text)::vector
-         LIMIT $3
-         """, [vector_literal, org, limit]}
+         LIMIT $#{3 + length(repo_params)}
+         """, [vector_literal, org] ++ repo_params ++ [limit]}
       else
         {"""
-         SELECT skill_name, 1 - (embedding <=> ($1::text)::vector) AS similarity
+         SELECT skill_name, repo, origin, 1 - (embedding <=> ($1::text)::vector) AS similarity
          FROM #{@table_name}
+         WHERE 1=1#{repo_sql}
          ORDER BY embedding <=> ($1::text)::vector
-         LIMIT $2
-         """, [vector_literal, limit]}
+         LIMIT $#{2 + length(repo_params)}
+         """, [vector_literal] ++ repo_params ++ [limit]}
       end
 
     case Acs.Repo.query(sql, params) do
       {:ok, %{rows: rows}} when is_list(rows) ->
         scored =
-          Enum.map(rows, fn [skill_name, similarity] ->
-            %{skill_name: skill_name, similarity: Pgvector.to_float(similarity)}
+          Enum.map(rows, fn [skill_name, repo, origin, similarity] ->
+            %{
+              skill_name: skill_name,
+              repo: repo,
+              origin: origin,
+              similarity: Pgvector.to_float(similarity)
+            }
           end)
 
         {:ok, scored}
@@ -138,23 +171,27 @@ defmodule Acs.Skills.VectorSearch do
     end
   end
 
-  defp search_sqlite(embedding, org, limit) do
+  defp search_sqlite(embedding, org, limit, repo_sql, repo_params) do
     {q, params} =
       if org do
-        {"SELECT skill_name, embedding FROM #{@table_name} WHERE org = ?", [org]}
+        {"SELECT skill_name, repo, origin, embedding FROM #{@table_name} WHERE org = ?#{repo_sql}",
+         [org] ++ repo_params}
       else
-        {"SELECT skill_name, embedding FROM #{@table_name}", []}
+        {"SELECT skill_name, repo, origin, embedding FROM #{@table_name} WHERE 1=1#{repo_sql}",
+         repo_params}
       end
 
     case Acs.Repo.query(q, params) do
       {:ok, %{rows: rows}} when is_list(rows) ->
         scored =
           rows
-          |> Enum.map(fn [skill_name, embedding_json] ->
+          |> Enum.map(fn [skill_name, repo, origin, embedding_json] ->
             case Jason.decode(embedding_json) do
               {:ok, emb} ->
                 %{
                   skill_name: skill_name,
+                  repo: repo,
+                  origin: origin,
                   similarity: Acs.Memory.Embedding.cosine_similarity(embedding, emb)
                 }
 
@@ -171,6 +208,29 @@ defmodule Acs.Skills.VectorSearch do
       _ ->
         {:ok, []}
     end
+  end
+
+  defp repo_filter(opts, dialect, start) do
+    target = opts[:repo] || opts[:current_repo]
+    mode = opts[:repo_mode] || :blended
+    origin = opts[:origin]
+    placeholder = fn n -> if dialect == :pg, do: "$#{n}", else: "?" end
+
+    {parts, params, next} =
+      cond do
+        is_binary(target) and mode in [:exact, "exact"] ->
+          {[" AND repo = #{placeholder.(start)}"], [target], start + 1}
+
+        is_binary(target) and mode in [:local, "local"] ->
+          {[" AND (repo = #{placeholder.(start)} OR repo IS NULL)"], [target], start + 1}
+
+        true ->
+          {[], [], start}
+      end
+
+    if is_binary(origin),
+      do: {Enum.join(parts ++ [" AND origin = #{placeholder.(next)}"], ""), params ++ [origin]},
+      else: {Enum.join(parts, ""), params}
   end
 
   def ensure_embeddings do
@@ -200,7 +260,11 @@ defmodule Acs.Skills.VectorSearch do
       |> Enum.zip(results)
       |> Enum.reduce({0, 0}, fn
         {skill, {:ok, embedding}}, {emb_acc, fail_acc} ->
-          upsert_embedding(skill["name"], embedding)
+          upsert_embedding(skill["name"], embedding, Acs.Org.current(), Acs.Repo,
+            repo: skill["repo"],
+            origin: skill["origin"]
+          )
+
           {emb_acc + 1, fail_acc}
 
         {skill, {:error, reason}}, {emb_acc, fail_acc} ->

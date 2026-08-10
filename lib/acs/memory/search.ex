@@ -214,7 +214,14 @@ defmodule Acs.Memory.Search do
   defp tenant_similar(embedding, opts, limit) do
     org = Keyword.get(opts, :org, Acs.Org.current())
 
-    Acs.Memory.VectorIndex.search_similar(embedding, limit: max(limit * 10, 100))
+    Acs.Memory.VectorIndex.search_similar(embedding,
+      limit: max(limit * 10, 100),
+      org: org,
+      current_repo: opts[:current_repo],
+      repo: opts[:repo],
+      repo_mode: opts[:repo_mode] || :blended,
+      origin: opts[:origin]
+    )
     |> Enum.filter(fn result ->
       cond do
         org == Acs.Org.configured() -> not String.contains?(result.memory_id, ":")

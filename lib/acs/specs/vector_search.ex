@@ -30,6 +30,8 @@ defmodule Acs.Specs.VectorSearch do
           source TEXT DEFAULT '',
           content TEXT NOT NULL DEFAULT '',
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding vector(#{Pgvector.dimensions()}) NOT NULL,
           updated_at TIMESTAMPTZ DEFAULT NOW(),
           PRIMARY KEY (id, org)
@@ -50,6 +52,8 @@ defmodule Acs.Specs.VectorSearch do
           source TEXT DEFAULT '',
           content TEXT NOT NULL DEFAULT '',
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding TEXT NOT NULL,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (id, org)
@@ -62,7 +66,18 @@ defmodule Acs.Specs.VectorSearch do
       ON #{@table_name} (app, path)
     """)
 
+    ensure_metadata_columns(repo)
+
     :ok
+  end
+
+  defp ensure_metadata_columns(repo) do
+    Enum.each(["repo", "origin"], fn column ->
+      case repo.query("SELECT #{column} FROM #{@table_name} LIMIT 0") do
+        {:ok, _} -> :ok
+        _ -> repo.query("ALTER TABLE #{@table_name} ADD COLUMN #{column} TEXT")
+      end
+    end)
   end
 
   def upsert_chunk(
@@ -74,7 +89,8 @@ defmodule Acs.Specs.VectorSearch do
         content,
         embedding,
         org \\ Acs.Org.current(),
-        repo \\ Acs.Repo
+        repo \\ Acs.Repo,
+        options \\ []
       )
       when is_binary(id) and is_list(embedding) do
     vector_literal = Pgvector.encode(embedding)
@@ -82,28 +98,54 @@ defmodule Acs.Specs.VectorSearch do
     if Pgvector.enabled?(repo) do
       repo.query(
         """
-        INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, embedding, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, ($8::text)::vector, NOW())
+        INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, repo, origin, embedding, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, ($10::text)::vector, NOW())
         ON CONFLICT (id, org) DO UPDATE SET
+          repo = EXCLUDED.repo,
+          origin = EXCLUDED.origin,
           embedding = EXCLUDED.embedding,
           content = EXCLUDED.content,
           source = EXCLUDED.source,
           updated_at = EXCLUDED.updated_at
         """,
-        [id, app, path, chunk_index, source, content, org, vector_literal]
+        [
+          id,
+          app,
+          path,
+          chunk_index,
+          source,
+          content,
+          org,
+          options[:repo],
+          options[:origin],
+          vector_literal
+        ]
       )
     else
       repo.query(
         """
-        INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, embedding, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, repo, origin, embedding, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ON CONFLICT(id, org) DO UPDATE SET
+          repo = excluded.repo,
+          origin = excluded.origin,
           embedding = excluded.embedding,
           content = excluded.content,
           source = excluded.source,
           updated_at = excluded.updated_at
         """,
-        [id, app, path, chunk_index, source, content, org, vector_literal]
+        [
+          id,
+          app,
+          path,
+          chunk_index,
+          source,
+          content,
+          org,
+          options[:repo],
+          options[:origin],
+          vector_literal
+        ]
       )
     end
 
@@ -128,12 +170,14 @@ defmodule Acs.Specs.VectorSearch do
     limit = Keyword.get(opts, :limit, 20)
     app = Keyword.get(opts, :app)
     org = Pgvector.org_filter(opts)
+    {pg_filter, pg_params} = spec_filters(opts, :pg, 2 + Enum.count([org, app], &is_binary/1))
+    {sqlite_filter, sqlite_params} = spec_filters(opts, :sqlite, 0)
 
     with {:ok, embedding} <- Pgvector.resolve_embedding(query, opts) do
       if Pgvector.enabled?() do
-        search_pg(embedding, org, app, limit)
+        search_pg(embedding, org, app, limit, pg_filter, pg_params)
       else
-        search_sqlite(embedding, org, app, limit)
+        search_sqlite(embedding, org, app, limit, sqlite_filter, sqlite_params)
       end
     else
       {:error, reason} ->
@@ -142,14 +186,26 @@ defmodule Acs.Specs.VectorSearch do
     end
   end
 
-  defp search_pg(embedding, org, app, limit) do
+  defp search_pg(embedding, org, app, limit, filter_sql, filter_params) do
     vector_literal = Pgvector.encode(embedding)
-    {sql, params} = build_pg_search_sql(org, app, vector_literal, limit)
+
+    {sql, params} =
+      build_pg_search_sql(org, app, vector_literal, limit, filter_sql, filter_params)
 
     case Acs.Repo.query(sql, params) do
       {:ok, %{rows: rows}} when is_list(rows) ->
         scored =
-          Enum.map(rows, fn [id, chunk_app, chunk_path, chunk_index, source, content, similarity] ->
+          Enum.map(rows, fn [
+                              id,
+                              chunk_app,
+                              chunk_path,
+                              chunk_index,
+                              source,
+                              content,
+                              repo,
+                              origin,
+                              similarity
+                            ] ->
             %{
               id: id,
               app: chunk_app,
@@ -157,6 +213,8 @@ defmodule Acs.Specs.VectorSearch do
               chunk_index: chunk_index,
               source: source,
               content: content,
+              repo: repo,
+              origin: origin,
               similarity: Pgvector.to_float(similarity)
             }
           end)
@@ -168,57 +226,42 @@ defmodule Acs.Specs.VectorSearch do
     end
   end
 
-  defp build_pg_search_sql(nil, nil, vector_literal, limit) do
+  defp build_pg_search_sql(org, app, vector_literal, limit, filter_sql, filter_params) do
+    {conditions, params, next} =
+      {[], [vector_literal], 2}
+      |> maybe_pg_condition(org, "org")
+      |> maybe_pg_condition(app, "app")
+
+    limit_param = next + length(filter_params)
+
     {"""
-     SELECT id, app, path, chunk_index, source, content,
+     SELECT id, app, path, chunk_index, source, content, repo, origin,
             1 - (embedding <=> ($1::text)::vector) AS similarity
      FROM #{@table_name}
+     WHERE #{Enum.join(if(conditions == [], do: ["1=1"], else: conditions), " AND ")}#{filter_sql}
      ORDER BY embedding <=> ($1::text)::vector
-     LIMIT $2
-     """, [vector_literal, limit]}
+     LIMIT $#{limit_param}
+     """, params ++ filter_params ++ [limit]}
   end
 
-  defp build_pg_search_sql(nil, app, vector_literal, limit) do
-    {"""
-     SELECT id, app, path, chunk_index, source, content,
-            1 - (embedding <=> ($1::text)::vector) AS similarity
-     FROM #{@table_name}
-     WHERE app = $2
-     ORDER BY embedding <=> ($1::text)::vector
-     LIMIT $3
-     """, [vector_literal, app, limit]}
-  end
-
-  defp build_pg_search_sql(org, nil, vector_literal, limit) do
-    {"""
-     SELECT id, app, path, chunk_index, source, content,
-            1 - (embedding <=> ($1::text)::vector) AS similarity
-     FROM #{@table_name}
-     WHERE org = $2
-     ORDER BY embedding <=> ($1::text)::vector
-     LIMIT $3
-     """, [vector_literal, org, limit]}
-  end
-
-  defp build_pg_search_sql(org, app, vector_literal, limit) do
-    {"""
-     SELECT id, app, path, chunk_index, source, content,
-            1 - (embedding <=> ($1::text)::vector) AS similarity
-     FROM #{@table_name}
-     WHERE org = $2 AND app = $3
-     ORDER BY embedding <=> ($1::text)::vector
-     LIMIT $4
-     """, [vector_literal, org, app, limit]}
-  end
-
-  defp search_sqlite(embedding, org, app, limit) do
-    {sql, params} = build_search_sql(org, app)
+  defp search_sqlite(embedding, org, app, limit, filter_sql, filter_params) do
+    {sql, params} = build_search_sql(org, app, filter_sql, filter_params)
 
     case Acs.Repo.query(sql, params) do
       {:ok, %{rows: rows}} when is_list(rows) ->
         scored =
           rows
-          |> Enum.map(fn [id, chunk_app, chunk_path, chunk_index, source, content, embedding_json] ->
+          |> Enum.map(fn [
+                           id,
+                           chunk_app,
+                           chunk_path,
+                           chunk_index,
+                           source,
+                           content,
+                           repo,
+                           origin,
+                           embedding_json
+                         ] ->
             case Jason.decode(embedding_json) do
               {:ok, emb} ->
                 %{
@@ -228,6 +271,8 @@ defmodule Acs.Specs.VectorSearch do
                   chunk_index: chunk_index,
                   source: source,
                   content: content,
+                  repo: repo,
+                  origin: origin,
                   similarity: Acs.Memory.Embedding.cosine_similarity(embedding, emb)
                 }
 
@@ -246,23 +291,44 @@ defmodule Acs.Specs.VectorSearch do
     end
   end
 
-  defp build_search_sql(nil, nil) do
-    {"SELECT id, app, path, chunk_index, source, content, embedding FROM #{@table_name}", []}
+  defp build_search_sql(org, app, filter_sql, filter_params) do
+    conditions = [] |> maybe_sqlite_condition(org, "org") |> maybe_sqlite_condition(app, "app")
+    conditions = if conditions == [], do: ["1=1"], else: conditions
+
+    {"SELECT id, app, path, chunk_index, source, content, repo, origin, embedding FROM #{@table_name} WHERE #{Enum.join(conditions, " AND ")}#{filter_sql}",
+     Enum.reject([org, app], &is_nil/1) ++ filter_params}
   end
 
-  defp build_search_sql(nil, app) do
-    {"SELECT id, app, path, chunk_index, source, content, embedding FROM #{@table_name} WHERE app = ?",
-     [app]}
-  end
+  defp maybe_pg_condition({conditions, params, next}, nil, _column),
+    do: {conditions, params, next}
 
-  defp build_search_sql(org, nil) do
-    {"SELECT id, app, path, chunk_index, source, content, embedding FROM #{@table_name} WHERE org = ?",
-     [org]}
-  end
+  defp maybe_pg_condition({conditions, params, next}, value, column),
+    do: {conditions ++ ["#{column} = $#{next}"], params ++ [value], next + 1}
 
-  defp build_search_sql(org, app) do
-    {"SELECT id, app, path, chunk_index, source, content, embedding FROM #{@table_name} WHERE org = ? AND app = ?",
-     [org, app]}
+  defp maybe_sqlite_condition(conditions, nil, _column), do: conditions
+  defp maybe_sqlite_condition(conditions, _value, column), do: conditions ++ ["#{column} = ?"]
+
+  defp spec_filters(opts, dialect, start) do
+    target = opts[:repo] || opts[:current_repo]
+    mode = opts[:repo_mode] || :blended
+    origin = opts[:origin]
+    ph = fn n -> if dialect == :pg, do: "$#{n}", else: "?" end
+
+    {parts, params, next} =
+      cond do
+        is_binary(target) and mode in [:exact, "exact"] ->
+          {[" AND repo = #{ph.(start)}"], [target], start + 1}
+
+        is_binary(target) and mode in [:local, "local"] ->
+          {[" AND (repo = #{ph.(start)} OR repo IS NULL)"], [target], start + 1}
+
+        true ->
+          {[], [], start}
+      end
+
+    if is_binary(origin),
+      do: {Enum.join(parts ++ [" AND origin = #{ph.(next)}"], ""), params ++ [origin]},
+      else: {Enum.join(parts, ""), params}
   end
 
   def ensure_embeddings do

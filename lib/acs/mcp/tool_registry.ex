@@ -718,6 +718,8 @@ defmodule Acs.MCP.ToolRegistry do
          audience: context[:audience] || context["audience"],
          audience_source: context[:audience_source] || context["audience_source"],
          client_name: context[:client_name] || context["client_name"],
+         working_repo: context[:working_repo] || context["working_repo"],
+         workspace_id: context[:workspace_id] || context["workspace_id"],
          mcp_endpoint: context[:mcp_endpoint] || context["mcp_endpoint"]
        }}
     else
@@ -751,6 +753,8 @@ defmodule Acs.MCP.ToolRegistry do
           src -> to_string(src)
         end,
       "_auth_client_name" => auth[:client_name],
+      "_auth_repo" => auth[:working_repo],
+      "_auth_workspace_id" => auth[:workspace_id],
       "_auth_mcp_endpoint" => auth[:mcp_endpoint]
     })
     |> Map.reject(fn {_k, v} -> is_nil(v) end)

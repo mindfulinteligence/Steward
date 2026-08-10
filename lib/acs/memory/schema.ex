@@ -35,6 +35,8 @@ defmodule Acs.Memory.Schema do
     field :file_path, :string
     field :auditor_flags, :string
     field :audience, :string
+    field :repo, :string
+    field :origin, :string
     field :team, :string
     field :project, :string
     field :visibility, :string, default: "org"
@@ -68,6 +70,8 @@ defmodule Acs.Memory.Schema do
       :file_path,
       :auditor_flags,
       :audience,
+      :repo,
+      :origin,
       :team,
       :project,
       :visibility,

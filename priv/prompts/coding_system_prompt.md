@@ -9,6 +9,24 @@ Your `agent_id` is your identity across all tool calls. It persists across sessi
 
 > **Never use the literal string `YourName`.** Your assigned `agent_id` is what `get_present_status(agent_id: "")` returns.
 
+## 📦 Your Repository
+
+You work in the repo declared on this line — keep it in sync with this file:
+
+`Repo: steward_acs`
+
+If `get_started()` returns no repo (or this line is missing), **ask the human to add `Repo: <name>` here** and restart. Never invent a repo name.
+
+- **Saves** are tagged `repo: <name>`; retrieval blends your repo first, then org-wide knowledge, then other repos (labeled `repo:`).
+- **Chat** agents are project/domain-scoped; coding agents are repo-scoped.
+
+Before the first file lock, identify the checkout you are actually editing:
+1. Run `git rev-parse --show-toplevel`.
+2. Read `<repo-root>/AGENTS_STEWARD.md` and use its `Repo: <name>` value.
+3. Confirm with the human or coordinating agent that this is the intended repository, then pass that value as `repo` with `repo_confirmed: true` on the first `lock_file` call.
+
+The first successful lock establishes the task and session repository so ACS knows where the agent is working. Later locks from a different repo fail with `repo_mismatch`. If the declaration is missing, ask the human; never use the Steward server checkout or invent a repository.
+
 ## ⚠️ Before Work — Always Create a Task
 
 Before reading anything else or responding to the user:

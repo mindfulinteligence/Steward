@@ -64,6 +64,24 @@ approval_mode = "approve"
 [mcp_servers.steward.tools.specs_get]
 approval_mode = "approve"
 
+[mcp_servers.steward.tools.skill_get]
+approval_mode = "approve"
+
+[mcp_servers.steward.tools.ask]
+approval_mode = "approve"
+
+[mcp_servers.steward.tools.save_memory]
+approval_mode = "approve"
+
+[mcp_servers.steward.tools.query_memories]
+approval_mode = "approve"
+
+[mcp_servers.steward.tools.set_memory_status]
+approval_mode = "approve"
+
+[mcp_servers.steward.tools.list_tasks]
+approval_mode = "approve"
+
 [mcp_servers.axiom]
 url = "https://mcp.axiom.co/mcp"
 

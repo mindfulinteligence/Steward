@@ -151,7 +151,7 @@ defmodule Acs.Skills.Store do
   @doc """
   Create or overwrite a skill markdown file in the org skills dir.
 
-  Opts keys (string or atom): `description`, `when_to_use`, `tags`, `scope_paths`, `status`, `proposed_by`.
+  Opts keys (string or atom): `description`, `when_to_use`, `tags`, `scope_paths`, `status`, `proposed_by`, `repo`, `origin`.
   Defaults to `status: \"proposed\"`.
   """
   def save_skill(name, content, opts \\ []) when is_binary(name) and is_binary(content) do
@@ -178,6 +178,8 @@ defmodule Acs.Skills.Store do
           "scope_paths" => opts["scope_paths"] || [],
           "status" => opts["status"] || "proposed",
           "proposed_by" => opts["proposed_by"],
+          "repo" => opts["repo"],
+          "origin" => opts["origin"],
           "authority_sort_order" => opts["authority_sort_order"]
         }
 
@@ -228,6 +230,8 @@ defmodule Acs.Skills.Store do
           "scope_paths" => string_list(opts["scope_paths"]),
           "status" => status,
           "proposed_by" => scalar(opts["proposed_by"]),
+          "repo" => scalar(opts["repo"]),
+          "origin" => scalar(opts["origin"]),
           "authority_sort_order" => int_value(opts["authority_sort_order"]),
           "content" => String.trim(content)
         }
@@ -307,6 +311,8 @@ defmodule Acs.Skills.Store do
       when_to_use: scalar(metadata["when_to_use"]),
       tags: string_list(metadata["tags"]),
       scope_paths: string_list(metadata["scope_paths"]),
+      repo: scalar(metadata["repo"]),
+      origin: scalar(metadata["origin"]),
       status: status,
       authority_sort_order: int_value(metadata["authority_sort_order"]),
       group: scalar(metadata["group"]) || group_for(id),
@@ -420,6 +426,8 @@ defmodule Acs.Skills.Store do
         description: scalar(metadata["description"]),
         tags: string_list(metadata["tags"]),
         scope_paths: string_list(metadata["scope_paths"]),
+        repo: scalar(metadata["repo"]),
+        origin: scalar(metadata["origin"]),
         content: String.trim(body),
         status: normalize_status(metadata["status"]),
         authority_sort_order: int_value(metadata["authority_sort_order"]),

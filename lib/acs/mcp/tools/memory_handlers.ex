@@ -79,14 +79,25 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
     # Stamp from the writer’s clearance, not the about-person’s directory rank.
     authority_sort_order = writer_authority_sort_order(args, org)
 
+    # Repo context: prefer the agent's current task file paths (most precise),
+    # fall back to the session repo declared in the coding system prompt.
+    repo = current_repo(args)
+
     memory_map =
       %{
-        "id" => Acs.Memory.generate_id(%{"kind" => kind, "title" => title}),
+        "id" =>
+          Acs.Memory.generate_id(%{
+            "kind" => kind,
+            "title" => title,
+            "scope_path" => scope_path,
+            "repo" => repo
+          }),
         "kind" => kind,
         "title" => title,
         "summary" => summary,
         "content" => content,
         "scope_path" => scope_path,
+        "repo" => repo,
         "importance" => importance,
         "audience" => args["_auth_audience"],
         "tags" => tags,
@@ -139,6 +150,7 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
     query = args["query"]
     mode = args["mode"] || "auto"
     min_relevance = args["min_relevance"]
+    current_repo = current_repo(args)
 
     base_opts = [
       scope_path: args["scope_path"] || args["scope"],
@@ -151,7 +163,11 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
       agent_role: args["_auth_role"],
       agent_id: args["_auth_agent_id"],
       audience: args["_auth_audience"],
-      authority_sort_order: args["_auth_authority_sort_order"]
+      authority_sort_order: args["_auth_authority_sort_order"],
+      current_repo: current_repo,
+      repo_mode: args["repo_mode"],
+      repo: args["repo"],
+      origin: args["origin"]
     ]
 
     if query && query != "" do
@@ -173,7 +189,9 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
             content: String.slice(m.content || "", 0, 500),
             relevance: Map.get(scores, m.id),
             created_by: decode_created_by(m.created_by_json),
-            visibility: m.visibility
+            visibility: m.visibility,
+            repo: repo_label(m.repo, current_repo),
+            origin: m.origin
           }
         end)
         |> maybe_filter_by_relevance(min_relevance)
@@ -194,13 +212,23 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
             created_at: m.created_at,
             updated_at: m.updated_at,
             created_by: decode_created_by(m.created_by_json),
-            visibility: m.visibility
+            visibility: m.visibility,
+            repo: repo_label(m.repo, current_repo),
+            origin: m.origin
           }
         end)
 
       {:ok, %{memories: result, count: length(result)}}
     end
   end
+
+  # Per product decision: the repo field appears ONLY when the result comes
+  # from a repo different from the caller's current repo. Same-repo and
+  # org-wide (repo nil) results stay unlabeled to avoid noise.
+  defp repo_label(nil, _current_repo), do: nil
+  defp repo_label(repo, current_repo) when repo == current_repo, do: nil
+  defp repo_label(repo, _current_repo) when is_binary(repo), do: repo
+  defp repo_label(_, _), do: nil
 
   defp maybe_filter_by_relevance(results, nil), do: results
 
@@ -663,7 +691,15 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
       case embedding_result do
         {:ok, embedding} ->
           storage_id = Acs.Memory.Indexer.storage_id(memory.org, memory.id)
-          Acs.Memory.VectorIndex.upsert_embedding(storage_id, embedding)
+
+          Acs.Memory.VectorIndex.upsert_embedding(
+            storage_id,
+            embedding,
+            memory.org,
+            Acs.Repo,
+            repo: memory.repo,
+            origin: memory.origin
+          )
 
         {:error, reason} ->
           Logger.warning("[Tools] Could not store embedding for #{memory.id}: #{reason}")
@@ -770,4 +806,21 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
   end
 
   defp coerce_string_list(_), do: []
+
+  # The first successful file lock establishes task/session scope. Never infer
+  # a writer repo from a relative path or from the server's own checkout.
+  defp current_repo(args) do
+    repo_from_task(args) || args["_auth_repo"]
+  end
+
+  defp repo_from_task(args) do
+    with agent_id when is_binary(agent_id) <- args["_auth_agent_id"],
+         %{current_task_id: task_id} when is_binary(task_id) <-
+           Acs.Acs.get_agent_status(agent_id),
+         %{repo: repo} when is_binary(repo) <- Acs.Acs.get_task(task_id) do
+      repo
+    else
+      _ -> nil
+    end
+  end
 end

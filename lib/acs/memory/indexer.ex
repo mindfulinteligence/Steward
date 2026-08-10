@@ -160,6 +160,8 @@ defmodule Acs.Memory.Indexer do
       created_by_json: Jason.encode!(memory.created_by),
       created_by_agent: get_in(memory.created_by, ["id"]),
       audience: memory.audience,
+      repo: memory.repo,
+      origin: memory.origin,
       file_path:
         if(Acs.Org.multi_tenant?(), do: nil, else: Acs.Memory.Loader.memory_to_path(memory)),
       team: memory.team,
@@ -381,6 +383,7 @@ defmodule Acs.Memory.Indexer do
       end
 
     query = apply_scope_path_filter(query, opts[:scope_path])
+    query = apply_repo_filter(query, opts)
     query = if opts[:limit], do: from(m in query, limit: ^opts[:limit]), else: query
     query = build_abac_filter(query, opts)
 
@@ -470,6 +473,7 @@ defmodule Acs.Memory.Indexer do
             like(m.summary, ^search_term)
 
     search_query = apply_scope_path_filter(search_query, opts[:scope_path])
+    search_query = apply_repo_filter(search_query, opts)
     search_query = apply_audience_order(search_query, opts[:audience])
 
     search_query =
@@ -520,6 +524,8 @@ defmodule Acs.Memory.Indexer do
       "scope_path" => schema.scope_path,
       "importance" => schema.importance,
       "audience" => schema.audience,
+      "repo" => schema.repo,
+      "origin" => schema.origin,
       "tags" => decode_json_field(schema.tags_json),
       "triggers" => decode_json_field(schema.triggers_json),
       "failure_modes" => decode_json_field(schema.failure_modes_json),
@@ -599,6 +605,29 @@ defmodule Acs.Memory.Indexer do
   end
 
   defp apply_audience_order(query, _), do: query
+
+  # Repo scoping. `repo` filters to exactly that repo. `repo_mode: :local`
+  # narrows to the current repo + org-wide (repo IS NULL); `:exact` narrows to
+  # the current repo only; org-wide (repo IS NULL) stays eligible unless `:exact`.
+  # `:blended` (default) applies no repo filter — ranking down-ranks other repos
+  # instead (see hybrid_search).
+  defp apply_repo_filter(query, opts) do
+    import Ecto.Query
+
+    cond do
+      repo = opts[:repo] ->
+        from m in query, where: m.repo == ^repo
+
+      opts[:repo_mode] == :exact and is_binary(opts[:current_repo]) ->
+        from m in query, where: m.repo == ^opts[:current_repo]
+
+      opts[:repo_mode] == :local and is_binary(opts[:current_repo]) ->
+        from m in query, where: m.repo == ^opts[:current_repo] or is_nil(m.repo)
+
+      true ->
+        query
+    end
+  end
 
   # Personal = creator-only (no rank gate). Shared ranked memories require
   # viewer clearance (memory.authority_sort_order >= viewer order). Unranked stay open.

@@ -57,6 +57,9 @@ defmodule Acs.MCP.Tools.QueryAgent do
     search_opts =
       abac_opts
       |> Keyword.put(:org, org)
+      |> Keyword.put(:current_repo, args["_auth_repo"])
+      |> Keyword.put(:repo_mode, args["repo_mode"] || "blended")
+      |> Keyword.put(:origin, args["origin"])
       |> maybe_put(:embedding, embedding)
 
     # Capture org for Task processes (Org.current/0 is process-local).
@@ -137,7 +140,8 @@ defmodule Acs.MCP.Tools.QueryAgent do
       query = args["content_query"]
       doc_type = args["document_type"]
       # Specs search accepts :embedding / :org from the shared ask opts.
-      spec_opts = Keyword.take(search_opts, [:embedding, :org])
+      spec_opts =
+        Keyword.take(search_opts, [:embedding, :org, :repo, :current_repo, :repo_mode, :origin])
 
       entries =
         cond do
@@ -192,7 +196,7 @@ defmodule Acs.MCP.Tools.QueryAgent do
   defp related_skills(query, search_opts, limit) do
     vector_opts =
       search_opts
-      |> Keyword.take([:embedding, :org])
+      |> Keyword.take([:embedding, :org, :repo, :current_repo, :repo_mode, :origin])
       |> Keyword.put(:limit, limit)
 
     case Acs.Skills.VectorSearch.search(query, vector_opts) do
@@ -210,13 +214,15 @@ defmodule Acs.MCP.Tools.QueryAgent do
     end
   end
 
-  defp enrich_skill(%{skill_name: name, similarity: sim}) do
+  defp enrich_skill(%{skill_name: name, similarity: sim} = hit) do
     case Store.get_skill(name) do
       nil ->
         %{name: name, description: nil, tags: [], similarity: Float.round(sim, 4)}
 
       skill ->
-        skill_summary(skill) |> Map.put(:similarity, Float.round(sim, 4))
+        skill_summary(skill)
+        |> Map.merge(Map.take(hit, [:repo, :origin]))
+        |> Map.put(:similarity, Float.round(sim, 4))
     end
   end
 

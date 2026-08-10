@@ -247,9 +247,34 @@ defmodule Acs.MCP.Tools.CoreHandlers do
 
   defp resolve_outcome_message(_), do: "User task updated."
 
-  def acs_lock_file(%{"agent_id" => agent_id, "task_id" => task_id, "file_path" => file_path}) do
-    case Acs.lock_file(file_path, agent_id, task_id) do
+  def acs_lock_file(
+        %{"agent_id" => agent_id, "task_id" => task_id, "file_path" => file_path} = args
+      ) do
+    repo = args["repo"] || args["_auth_repo"]
+
+    task_repo =
+      case Acs.Acs.get_task(task_id) do
+        %{repo: task_repo} when is_binary(task_repo) -> task_repo
+        _ -> nil
+      end
+
+    repo_confirmed = args["repo_confirmed"] in [true, "true"]
+
+    lock_result =
+      cond do
+        is_nil(repo) and is_nil(task_repo) -> {:error, :repo_context_required}
+        is_nil(task_repo) and not repo_confirmed -> {:error, :repo_confirmation_required}
+        true -> Acs.lock_file(file_path, agent_id, task_id, repo || task_repo)
+      end
+
+    case lock_result do
       {:ok, result} ->
+        Acs.MCP.ClientSession.set_working_repo(
+          result[:repo],
+          args["workspace_id"] || args["_auth_workspace_id"],
+          args["_auth_agent_id"] || agent_id
+        )
+
         # Add file locking protocol guidance to the response
         guidance = Map.get(result, :guidance, %{})
 
@@ -279,6 +304,17 @@ defmodule Acs.MCP.Tools.CoreHandlers do
       {:error, :task_not_found} ->
         {:error,
          "Task not found. The task may have been released or never existed. Create and claim a new task: `create_work(\"<agent_id>\", \"<title>\", claim: true)`"}
+
+      {:error, :repo_context_required} ->
+        {:error,
+         "Repository context is required on the first lock. Pass `repo` (the repository name) with this lock_file call."}
+
+      {:error, :repo_confirmation_required} ->
+        {:error,
+         "Confirm the repository before the first lock. Verify the local checkout with `git rev-parse --show-toplevel`, read its AGENTS_STEWARD.md Repo: declaration, then pass `repo` and `repo_confirmed: true`."}
+
+      {:error, :repo_mismatch} ->
+        {:error, "Repository does not match the task's established repository scope."}
 
       {:error, :already_locked} ->
         {:ok, %{status: "already_locked", message: "File already locked"}}
@@ -332,8 +368,10 @@ defmodule Acs.MCP.Tools.CoreHandlers do
       connected_user: you,
       authenticated_as: you,
       your_agent_id: agent_name,
+      repo: Acs.Repos.repo(),
+      repo_guidance: Acs.Repos.guidance(),
       general:
-        "ACS coordinates agent work. Create tasks, claim them, lock files, edit, save learnings (skills / documents / specs / memories), then release. Scopes may be code paths or business domains (org/domain/topic). Every response includes `_next` with suggested next tools.",
+        "ACS coordinates agent work. First identify the local checkout with `git rev-parse --show-toplevel`, read its `AGENTS_STEWARD.md` Repo: declaration, and confirm with the human or coordinating agent that it is the intended repository. Create and claim a task, then make the first lock_file call with that repo and `repo_confirmed: true`; the first successful lock establishes task/session scope and later repo mismatches fail. Edit, save learnings (skills / documents / specs / memories), then release. Scopes may be code paths or business domains (org/domain/topic). Every response includes `_next` with suggested next tools.",
       get_started: coding_get_started_steps(you, agent_name),
       agent_identity: identity,
       org_knowledge_conventions:
@@ -439,11 +477,12 @@ defmodule Acs.MCP.Tools.CoreHandlers do
 
   defp coding_get_started_steps(you, agent_name) when is_binary(you) do
     id = if is_binary(agent_name) and agent_name != "", do: agent_name, else: you
-    "Connected user: \"#{you}\". 1) ask(content_query: \"... #{you} ...\") when you need this person's memories  2) create_work(title, claim: true) — omit agent_id (ACS uses \"#{id}\")  3) skill_get / query_specs  4) lock_file → work → save → unlock  5) release_work → submit_task_feedback last"
+
+    "Connected user: \"#{you}\". 1) find the local checkout with `git rev-parse --show-toplevel`, read its `AGENTS_STEWARD.md` Repo: line, and confirm it is the intended repository 2) ask(content_query: \"... #{you} ...\") when you need this person's memories  3) create_work(title, claim: true) — omit agent_id (ACS uses \"#{id}\")  4) skill_get / query_specs  5) first lock_file(..., repo: \"<Repo value>\", repo_confirmed: true) → work → save → unlock  6) release_work → submit_task_feedback last"
   end
 
   defp coding_get_started_steps(_nil, _agent_name) do
-    "1) `get_present_status(agent_id: \"your_name\")` — register under your own agent name (or \"\" for a pool-assigned name; returns assigned_agent_id)  2) `create_work(agent_id, title, claim: true)` — create + claim, passing your registered agent_id on every task tool  3) `skill_get(search: title)` — find workflow guides  4) `query_specs(query: title)` — check specs/documents  5) `lock_file` files  6) do work  7) pick one save: `skill_save` (how-to) | `specs_propose` document_type+content (long doc) | `specs_propose` purpose/invariants (code spec) | `save_memory` (short truth)  8) `unlock_file`  9) `release_work`  10) `submit_task_feedback(learned_for_agents:..., had_issues:..., improvements:..., info_needed:...)` last"
+    "1) `get_present_status(agent_id: \"your_name\")` — register under your own agent name (or \"\" for a pool-assigned name; returns assigned_agent_id)  2) find the local checkout with `git rev-parse --show-toplevel`, read its `AGENTS_STEWARD.md` Repo: line, and confirm it is intended 3) `create_work(agent_id, title, claim: true)` — create + claim  4) `skill_get(search: title)` — find workflow guides  5) `query_specs(query: title)` — check specs/documents  6) first `lock_file(..., repo: \"<Repo value>\", repo_confirmed: true)`  7) do work  8) pick one save: `skill_save` (how-to) | `specs_propose` document_type+content (long doc) | `specs_propose` purpose/invariants (code spec) | `save_memory` (short truth)  9) `unlock_file`  10) `release_work`  11) `submit_task_feedback(learned_for_agents:..., had_issues:..., improvements:..., info_needed:...)` last"
   end
 
   defp connected_user_from_args(args) when is_map(args) do

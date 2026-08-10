@@ -29,6 +29,10 @@ defmodule Acs.Specs.Entry do
   defstruct [
     # string — app name (e.g., "my_app") — per-app isolation
     :app,
+    # string — authenticated repository provenance
+    :repo,
+    # string — authenticated writer origin (coding_agent/chat_agent/system)
+    :origin,
     # string — "engine/orchestrator" (unique within app scope)
     :id,
     # string — see status lifecycle above
@@ -106,6 +110,8 @@ defmodule Acs.Specs.Entry do
 
   @type t :: %__MODULE__{
           app: String.t() | nil,
+          repo: String.t() | nil,
+          origin: String.t() | nil,
           id: String.t() | nil,
           status: String.t() | nil,
           title: String.t() | nil,
@@ -160,6 +166,8 @@ defmodule Acs.Specs.Entry do
 
     struct(__MODULE__, %{
       app: map["app"],
+      repo: map["repo"],
+      origin: map["origin"],
       id: map["id"],
       status: map["status"] || "proposed",
       title: map["title"],
@@ -206,6 +214,8 @@ defmodule Acs.Specs.Entry do
   def to_map(%__MODULE__{} = entry) do
     %{
       "app" => entry.app,
+      "repo" => entry.repo,
+      "origin" => entry.origin,
       "id" => entry.id,
       "status" => entry.status,
       "title" => entry.title,

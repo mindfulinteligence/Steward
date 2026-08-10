@@ -18,6 +18,8 @@ defmodule Acs.Memory do
 
   @slug_cleanup_regex ~r/[^a-z0-9]+/
 
+  @origin_types ~w(coding_agent chat_agent system imported)
+
   defstruct [
     :id,
     :kind,
@@ -28,6 +30,8 @@ defmodule Acs.Memory do
     :scope_path,
     :importance,
     :audience,
+    :repo,
+    :origin,
     :tags,
     :triggers,
     :failure_modes,
@@ -55,6 +59,8 @@ defmodule Acs.Memory do
           scope_path: String.t(),
           importance: non_neg_integer(),
           audience: String.t() | nil,
+          repo: String.t() | nil,
+          origin: String.t() | nil,
           tags: [String.t()],
           triggers: [String.t()],
           failure_modes: [String.t()],
@@ -88,6 +94,8 @@ defmodule Acs.Memory do
       scope_path: attrs["scope_path"] || "",
       importance: attrs["importance"] || 3,
       audience: attrs["audience"],
+      repo: Acs.Repos.normalize(attrs["repo"]),
+      origin: attrs["origin"] || default_origin(attrs["audience"]),
       tags: attrs["tags"] || [],
       triggers: attrs["triggers"] || [],
       failure_modes: attrs["failure_modes"] || [],
@@ -229,6 +237,8 @@ defmodule Acs.Memory do
       "content" => memory.content,
       "importance" => memory.importance,
       "audience" => memory.audience,
+      "repo" => memory.repo,
+      "origin" => memory.origin,
       "tags" => memory.tags,
       "triggers" => memory.triggers,
       "failure_modes" => memory.failure_modes,
@@ -265,12 +275,17 @@ defmodule Acs.Memory do
   end
 
   @doc """
-  Generates a deterministic memory ID from kind, title, and scope_path.
+  Generates a deterministic memory ID from kind, title, scope_path, and repo.
+
+  `repo` is folded into the hash suffix so the same title at the same scope
+  in different repos gets distinct IDs (common file/module names collide
+  across repos).
   """
   def generate_id(attrs) do
     kind = attrs["kind"] || "memory"
     title = attrs["title"] || "untitled"
     scope = attrs["scope_path"] || "global"
+    repo = Acs.Repos.normalize(attrs["repo"])
 
     title_slug =
       title
@@ -279,12 +294,20 @@ defmodule Acs.Memory do
       |> String.trim("_")
       |> String.slice(0, 40)
 
-    # Hash scope_path to get a short, consistent suffix
-    scope_hash = :crypto.hash(:md5, scope) |> Base.encode16() |> String.slice(0, 8)
+    # Hash scope_path + repo to get a short, consistent suffix. Keep the
+    # legacy hash (scope only) when repo is nil so existing IDs stay stable.
+    id_source = if repo, do: "#{scope}|#{repo}", else: scope
+    scope_hash = :crypto.hash(:md5, id_source) |> Base.encode16() |> String.slice(0, 8)
 
     "#{kind}_#{title_slug}_#{scope_hash}"
   end
 
+  defp default_origin("coding"), do: "coding_agent"
+  defp default_origin("chat"), do: "chat_agent"
+  defp default_origin(_), do: nil
+
+  @doc false
+  def origin_types, do: @origin_types
   @doc false
   def kind_types, do: @kind_types
   @doc false

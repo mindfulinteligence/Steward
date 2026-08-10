@@ -129,12 +129,13 @@ defmodule Acs.Memory.HybridSearchTest do
     test "default weights favor scope and keep audience ahead of lexical" do
       weights = HybridSearch.weights()
 
-      assert weights.scope == 0.30
-      assert weights.audience == 0.20
+      assert weights.scope == 0.25
+      assert weights.audience == 0.15
       assert weights.semantic == 0.25
+      assert weights.repo == 0.10
 
       assert_in_delta weights.semantic + weights.lexical + weights.scope + weights.metadata +
-                        weights.audience,
+                        weights.audience + weights.repo,
                       1.0,
                       0.0001
     end
@@ -262,6 +263,82 @@ defmodule Acs.Memory.HybridSearchTest do
     end
   end
 
+  describe "repo awareness" do
+    test "tags results with repo, origin, and cross_repo when from a different repo", %{
+      org: org,
+      zero_embedding: embedding
+    } do
+      setup_test_memories_with_repo("test_hybrid_repo_label", "acme-web")
+
+      result =
+        HybridSearch.search("cache release",
+          org: org,
+          embedding: embedding,
+          current_repo: "steward_acs",
+          log_search: false
+        )
+
+      hit = Enum.find(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_label"))
+
+      assert hit.repo == "acme-web"
+      assert hit.origin == "coding_agent"
+      assert hit.cross_repo == true
+
+      same_repo =
+        HybridSearch.search("cache release",
+          org: org,
+          embedding: embedding,
+          current_repo: "acme-web",
+          log_search: false
+        )
+
+      same_hit =
+        Enum.find(same_repo.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_label"))
+
+      assert same_hit.cross_repo == false
+    after
+      cleanup_test_memories("test_hybrid_repo_label")
+    end
+
+    test "repo filter narrows to exactly one repo", %{org: org, zero_embedding: embedding} do
+      setup_test_memories_with_repo("test_hybrid_repo_exact", "acme-web")
+      setup_test_memories_with_repo("test_hybrid_repo_other", "acme-other")
+
+      result =
+        HybridSearch.search("cache release",
+          org: org,
+          embedding: embedding,
+          repo: "acme-web",
+          log_search: false
+        )
+
+      assert Enum.any?(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_exact"))
+      refute Enum.any?(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_other"))
+    after
+      cleanup_test_memories("test_hybrid_repo_exact")
+      cleanup_test_memories("test_hybrid_repo_other")
+    end
+
+    test "current repo ranks above other repos", %{org: org, zero_embedding: embedding} do
+      setup_test_memories_with_repo("test_hybrid_repo_rank_other", "acme-other")
+
+      result =
+        HybridSearch.search("cache release",
+          org: org,
+          embedding: embedding,
+          current_repo: "acme-web",
+          log_search: false
+        )
+
+      hit = Enum.find(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_rank_other"))
+
+      assert hit.cross_repo == true
+      assert hit.scores.repo <= 0.2
+    after
+      cleanup_test_memories("test_hybrid_repo_rank_other")
+    end
+  end
+
   defp setup_test_memories(id) do
     attrs = %{
       "id" => id,
@@ -273,6 +350,28 @@ defmodule Acs.Memory.HybridSearchTest do
       "scope_path" => "agent_coordination_system/cache/release",
       "importance" => 5,
       "tags" => ["cache", "concurrency"]
+    }
+
+    memory = Acs.Memory.new(attrs)
+    Acs.Memory.Loader.save(memory)
+    Acs.Memory.Indexer.upsert_memory(memory)
+    :ok
+  end
+
+  defp setup_test_memories_with_repo(id, repo) do
+    attrs = %{
+      "id" => id,
+      "kind" => "axiom",
+      "status" => "approved",
+      "title" => "Cache Release Ordering",
+      "summary" => "Agent state must be cleared before cache deletion",
+      "content" => "When releasing tasks, clear agent ownership before deleting cache entries",
+      "scope_path" => "agent_coordination_system/cache/release",
+      "importance" => 5,
+      "tags" => ["cache", "concurrency"],
+      "repo" => repo,
+      "audience" => "coding",
+      "origin" => "coding_agent"
     }
 
     memory = Acs.Memory.new(attrs)

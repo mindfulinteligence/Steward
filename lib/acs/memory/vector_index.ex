@@ -25,6 +25,8 @@ defmodule Acs.Memory.VectorIndex do
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           memory_id TEXT NOT NULL,
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding vector(#{Pgvector.dimensions()}) NOT NULL,
           updated_at TIMESTAMPTZ DEFAULT NOW(),
           PRIMARY KEY (memory_id, org)
@@ -40,6 +42,8 @@ defmodule Acs.Memory.VectorIndex do
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           memory_id TEXT NOT NULL,
           org TEXT NOT NULL DEFAULT 'default',
+          repo TEXT,
+          origin TEXT,
           embedding TEXT NOT NULL,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (memory_id, org)
@@ -53,7 +57,13 @@ defmodule Acs.Memory.VectorIndex do
   @doc """
   Store or update embedding for a memory, scoped to an org.
   """
-  def upsert_embedding(memory_id, embedding, org \\ Acs.Org.current(), repo \\ Acs.Repo)
+  def upsert_embedding(
+        memory_id,
+        embedding,
+        org \\ Acs.Org.current(),
+        repo \\ Acs.Repo,
+        options \\ []
+      )
       when is_binary(memory_id) and is_list(embedding) and is_binary(org) do
     index_id = Acs.Org.memory_index_id(memory_id, org)
     vector_literal = Pgvector.encode(embedding)
@@ -64,24 +74,28 @@ defmodule Acs.Memory.VectorIndex do
           # ($n::text)::vector: Postgrex has no vector OID without the pgvector package.
           repo.query(
             """
-              INSERT INTO #{@table_name} (memory_id, org, embedding, updated_at)
-              VALUES ($1, $2, ($3::text)::vector, NOW())
+              INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+              VALUES ($1, $2, $3, $4, ($5::text)::vector, NOW())
               ON CONFLICT (memory_id, org) DO UPDATE SET
+                repo = EXCLUDED.repo,
+                origin = EXCLUDED.origin,
                 embedding = EXCLUDED.embedding,
                 updated_at = EXCLUDED.updated_at
             """,
-            [index_id, org, vector_literal]
+            [index_id, org, options[:repo], options[:origin], vector_literal]
           )
         else
           repo.query(
             """
-              INSERT INTO #{@table_name} (memory_id, org, embedding, updated_at)
-              VALUES (?, ?, ?, datetime('now'))
+              INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+              VALUES (?, ?, ?, ?, ?, datetime('now'))
               ON CONFLICT(memory_id, org) DO UPDATE SET
+                repo = excluded.repo,
+                origin = excluded.origin,
                 embedding = excluded.embedding,
                 updated_at = excluded.updated_at
             """,
-            [index_id, org, vector_literal]
+            [index_id, org, options[:repo], options[:origin], vector_literal]
           )
         end
 
@@ -104,11 +118,12 @@ defmodule Acs.Memory.VectorIndex do
       when is_list(embedding) and is_list(options) do
     limit = Keyword.get(options, :limit, 10)
     org = Pgvector.org_filter(options)
+    filters = vector_filters(options)
 
     if Pgvector.enabled?(repo) do
-      search_similar_pg(embedding, org, limit, repo)
+      search_similar_pg(embedding, org, limit, filters, repo)
     else
-      search_similar_sqlite(embedding, org, limit, repo)
+      search_similar_sqlite(embedding, org, limit, filters, repo)
     end
   end
 
@@ -147,30 +162,32 @@ defmodule Acs.Memory.VectorIndex do
     |> Enum.filter(&(&1.similarity >= threshold))
   end
 
-  defp search_similar_pg(embedding, org, limit, repo) do
+  defp search_similar_pg(embedding, org, limit, filters, repo) do
     vector_literal = Pgvector.encode(embedding)
+    {filter_sql, filter_params, next_param} = pg_filter_sql(filters, 3)
 
     {sql, params} =
       if org do
         {"""
          SELECT memory_id, 1 - (embedding <=> ($1::text)::vector) AS similarity
          FROM #{@table_name}
-         WHERE org = $2
+         WHERE org = $2#{filter_sql}
          ORDER BY embedding <=> ($1::text)::vector
-         LIMIT $3
-         """, [vector_literal, org, limit]}
+         LIMIT $#{next_param}
+         """, [vector_literal, org] ++ filter_params ++ [limit]}
       else
         {"""
          SELECT memory_id, 1 - (embedding <=> ($1::text)::vector) AS similarity
          FROM #{@table_name}
          ORDER BY embedding <=> ($1::text)::vector
-         LIMIT $2
-         """, [vector_literal, limit]}
+         WHERE 1=1#{filter_sql}
+         LIMIT $#{next_param - 1}
+         """, [vector_literal] ++ filter_params ++ [limit]}
       end
 
     case repo.query(sql, params) do
       {:ok, %{rows: rows}} when is_list(rows) ->
-        Enum.map(rows, fn [memory_id, similarity] ->
+        Enum.map(rows, fn [memory_id, similarity | _] ->
           %{
             memory_id: Acs.Org.public_memory_id(memory_id, org || Acs.Org.current()),
             similarity: Pgvector.to_float(similarity)
@@ -186,12 +203,15 @@ defmodule Acs.Memory.VectorIndex do
     end
   end
 
-  defp search_similar_sqlite(embedding, org, limit, repo) do
+  defp search_similar_sqlite(embedding, org, limit, filters, repo) do
+    {filter_sql, filter_params} = sqlite_filter_sql(filters)
+
     {query, params} =
       if org do
-        {"SELECT memory_id, embedding FROM #{@table_name} WHERE org = ?", [org]}
+        {"SELECT memory_id, embedding FROM #{@table_name} WHERE org = ?#{filter_sql}",
+         [org] ++ filter_params}
       else
-        {"SELECT memory_id, embedding FROM #{@table_name}", []}
+        {"SELECT memory_id, embedding FROM #{@table_name} WHERE 1=1#{filter_sql}", filter_params}
       end
 
     case repo.query(query, params) do
@@ -216,5 +236,49 @@ defmodule Acs.Memory.VectorIndex do
       _ ->
         []
     end
+  end
+
+  defp vector_filters(options) do
+    mode = Keyword.get(options, :repo_mode, :blended)
+    target = Keyword.get(options, :repo) || Keyword.get(options, :current_repo)
+    origin = Keyword.get(options, :origin)
+    %{mode: mode, target: target, origin: origin}
+  end
+
+  defp pg_filter_sql(%{mode: mode, target: target, origin: origin}, start) do
+    {parts, params, next} =
+      if is_binary(target) and mode in [:exact, "exact"] do
+        {[" AND repo = $#{start}"], [target], start + 1}
+      else
+        if is_binary(target) and mode in [:local, "local"] do
+          {[" AND (repo = $#{start} OR repo IS NULL)"], [target], start + 1}
+        else
+          {[], [], start}
+        end
+      end
+
+    if is_binary(origin),
+      do: {parts ++ [" AND origin = $#{next}"], params ++ [origin], next + 1},
+      else:
+        {parts, params, next}
+        |> then(fn {parts, params, next} -> {Enum.join(parts), params, next} end)
+  end
+
+  defp sqlite_filter_sql(%{mode: mode, target: target, origin: origin}) do
+    {parts, params} =
+      cond do
+        is_binary(target) and mode in [:exact, "exact"] ->
+          {[" AND repo = ?"], [target]}
+
+        is_binary(target) and mode in [:local, "local"] ->
+          {[" AND (repo = ? OR repo IS NULL)"], [target]}
+
+        true ->
+          {[], []}
+      end
+
+    if is_binary(origin),
+      do: {Enum.join(parts ++ [" AND origin = ?"]), params ++ [origin]},
+      else: {Enum.join(parts), params}
   end
 end

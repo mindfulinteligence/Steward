@@ -157,7 +157,10 @@ defmodule Acs.Specs.Search do
   end
 
   defp vector_opts(opts, overrides) do
-    Keyword.merge(overrides, Keyword.take(opts, [:embedding, :org]))
+    Keyword.merge(
+      overrides,
+      Keyword.take(opts, [:embedding, :org, :repo, :current_repo, :repo_mode, :origin])
+    )
   end
 
   defp enrich_rag_result(%{

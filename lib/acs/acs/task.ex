@@ -20,6 +20,7 @@ defmodule Acs.Acs.Task do
              :auto_release_at,
              :event_count,
              :file_paths,
+             :repo,
              :org,
              :inserted_at,
              :updated_at
@@ -43,6 +44,7 @@ defmodule Acs.Acs.Task do
     field(:auto_release_at, :utc_datetime)
     field(:event_count, :integer, default: 1)
     field(:file_paths, {:array, :string}, default: [])
+    field(:repo, :string)
     field(:org, :string, default: "default")
     timestamps(type: :utc_datetime)
   end
@@ -69,6 +71,7 @@ defmodule Acs.Acs.Task do
       :auto_release_at,
       :event_count,
       :file_paths,
+      :repo,
       :org
     ])
     |> validate_required([:title, :created_by_agent])

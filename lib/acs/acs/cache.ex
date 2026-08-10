@@ -159,6 +159,7 @@ defmodule Acs.Acs.Cache do
         inserted_at: t.inserted_at,
         event_count: t.event_count,
         file_paths: t.file_paths || [],
+        repo: t.repo,
         org: t.org
       }
 

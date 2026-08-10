@@ -22,12 +22,12 @@ defmodule Acs.Memory.Guidance do
   # ── Coding packet copy ──────────────────────────────────────────────
 
   @coding_workflow """
-  Start: create or claim a task. Then: lock_file → work → unlock_file → save (skill_save / specs_propose for specs or documents / save_memory) → release_work → submit_task_feedback last.
+  Start: create or claim a task. Before the first lock, identify the local checkout: run `git rev-parse --show-toplevel`, read that checkout's `AGENTS_STEWARD.md`, and use its `Repo: <name>` value. Confirm with the human or coordinating agent that this is the intended repository, then call `lock_file(..., repo: "<name>", repo_confirmed: true)` for the first file. That first successful lock establishes the task/session repository; every later lock must use the same repo. Then: work → unlock_file → save (skill_save / specs_propose for specs or documents / save_memory) → release_work → submit_task_feedback last.
   No tasks? list_tasks or wait for the next user request. Scopes: code paths OR business domains (org/domain/topic).
   """
 
   @coding_file_locking """
-  lock_file before edit; unlock_file when done (by path or task_id). 10-min auto-release. get_locked_files() to check.
+  Before editing, lock every file. On the first lock for a task, pass the repo read from the current checkout's `AGENTS_STEWARD.md` (`Repo: <name>`) and `repo_confirmed: true` only after confirming it is the intended checkout. If that declaration is missing or the repository is not confirmed, ask the human; do not use the ACS server checkout or invent a repo. The first successful lock records the repo. A later repo mismatch is rejected. unlock_file when done (by path or task_id). 10-min auto-release. get_locked_files() to check.
   """
 
   @coding_memory """
@@ -116,6 +116,14 @@ defmodule Acs.Memory.Guidance do
   @scope_hint_chat """
   No scope was provided, so this packet only shows org-wide top skills.
   For scope-relevant skills, specs, and knowledge, ask again with a scope such as "org/domain/topic".
+  """
+
+  @repo_hint """
+  The startup packet cannot reliably identify the agent's local checkout. Before the first lock,
+  run `git rev-parse --show-toplevel`, read `<repo-root>/AGENTS_STEWARD.md`, and use its
+  `Repo: <name>` declaration as `lock_file(repo: "<name>")`. If the file or declaration is
+  missing, ask the human to add it; never use the ACS server checkout or invent a repo.
+  Until the first successful lock, repository-specific saves are blocked; org-wide retrieval remains available.
   """
 
   @specs_instructions_short """
@@ -234,6 +242,15 @@ defmodule Acs.Memory.Guidance do
           search_opts
       end
 
+    # Coding guidance blends by repo: current repo first, org-wide second,
+    # other repos down-ranked (see Acs.Memory.HybridSearch).
+    search_opts =
+      if audience == :coding do
+        search_opts ++ [current_repo: Acs.Repos.repo(), repo_mode: Keyword.get(opts, :repo_mode)]
+      else
+        search_opts
+      end
+
     sorted =
       search_opts
       |> Acs.Memory.Search.list()
@@ -309,15 +326,44 @@ defmodule Acs.Memory.Guidance do
 
         claim_context = Acs.ClaimContext.for_task(task_map)
         title = (task_map[:title] || "") |> String.downcase()
+        repos = repos_from_task(task_map)
 
         guidance
         |> Map.put(:task_context, build_task_context(title))
         |> Map.put(:relevant_skills, claim_context.relevant_skills)
         |> Map.put(:relevant_specs, claim_context.relevant_specs)
+        |> maybe_put_multi_repo_warning(repos)
         |> filter_claim_memories(title)
         |> maybe_put_coding_finish(audience, tier)
         |> maybe_put_missing_spec_nudge()
     end
+  end
+
+  # A task whose file_paths span multiple repos must not silently weaken the
+  # first-lock repository boundary.
+  defp maybe_put_multi_repo_warning(packet, []), do: packet
+  defp maybe_put_multi_repo_warning(packet, [_single]), do: packet
+
+  defp maybe_put_multi_repo_warning(packet, repos) do
+    warning = """
+    ⚠️  WARNING: this task references multiple repository paths (#{Enum.join(repos, ", ")}).
+
+    The first successful lock establishes one repository for the task. Locking a file
+    from another repository later will fail with `repo_mismatch`; split the task if
+    work must proceed in more than one repository.
+    """
+
+    packet
+    |> Map.put(:multi_repo_warning, warning)
+    |> Map.put(:multi_repo_warning_repeat, warning)
+    |> Map.put(:multi_repo_warning_again, warning)
+  end
+
+  defp repos_from_task(task_map) do
+    (task_map[:file_paths] || [])
+    |> Enum.map(&Acs.Repos.repo_for_file_path/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
   end
 
   # Claim: only keep axioms/warnings that share a token with the task title.
@@ -370,6 +416,8 @@ defmodule Acs.Memory.Guidance do
       mode: :mcp,
       scope: scope_path,
       tier: :claim,
+      repo: Acs.Repos.repo(),
+      repo_hint: repo_hint(),
       critical_axioms:
         merge_items(
           extract_axioms(sorted, min_importance: 4),
@@ -398,6 +446,8 @@ defmodule Acs.Memory.Guidance do
       scope: scope_path,
       scope_category: scope_path,
       tier: :full,
+      repo: Acs.Repos.repo(),
+      repo_hint: repo_hint(),
       critical_axioms:
         merge_items(extract_axioms(sorted), tool_guidance, :critical_axioms, @critical_axioms_max),
       warnings: merge_items(extract_warnings(sorted), tool_guidance, :warnings, @warnings_max),
@@ -886,5 +936,10 @@ defmodule Acs.Memory.Guidance do
   def skills_instructions_chat_for_tier(_tier) do
     full = Acs.Prompts.instructions_chat("skills")
     if full != "", do: full, else: @skills_instructions_chat
+  end
+
+  # Repo hint: present guidance only when no repo is declared for the session.
+  defp repo_hint do
+    if Acs.Repos.repo(), do: nil, else: @repo_hint
   end
 end

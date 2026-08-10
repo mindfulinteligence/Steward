@@ -196,6 +196,20 @@ defmodule Acs.MCP.ClientSession do
     resolve_session_field(agent_identity, :audience_source)
   end
 
+  @doc "Bind the repository and workspace established by the first file lock."
+  def set_working_repo(repo, workspace_id \\ nil, agent_identity \\ nil) do
+    attrs = %{working_repo: Acs.Repos.normalize(repo), workspace_id: workspace_id}
+    put(current_id(), attrs)
+    put(agent_key(agent_identity), attrs)
+    :ok
+  end
+
+  def resolve_working_repo(agent_identity \\ nil),
+    do: resolve_session_field(agent_identity, :working_repo)
+
+  def resolve_workspace_id(agent_identity \\ nil),
+    do: resolve_session_field(agent_identity, :workspace_id)
+
   def remember_initialize(params, agent_identity) when is_map(params) do
     client_info = params["clientInfo"] || params[:clientInfo] || %{}
     client_name = client_info["name"] || client_info[:name]

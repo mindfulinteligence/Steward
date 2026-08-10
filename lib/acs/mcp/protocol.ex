@@ -377,6 +377,8 @@ defmodule Acs.MCP.Protocol do
       audience: audience,
       audience_source: Acs.MCP.ClientSession.resolve_audience_source(agent_identity),
       client_name: Acs.MCP.ClientSession.resolve_client_name(agent_identity),
+      working_repo: Acs.MCP.ClientSession.resolve_working_repo(agent_identity),
+      workspace_id: Acs.MCP.ClientSession.resolve_workspace_id(agent_identity),
       mcp_endpoint: Acs.MCP.ClientSession.resolve_mcp_endpoint(agent_identity)
     }
 

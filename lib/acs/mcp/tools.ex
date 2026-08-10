@@ -204,14 +204,27 @@ defmodule Acs.MCP.Tools do
       ),
       tool_def(
         "lock_file",
-        "Lock a single file",
+        "Lock a single file. Before the first lock, identify the current local checkout with `git rev-parse --show-toplevel`, read its AGENTS_STEWARD.md Repo: declaration, and confirm it is the repository you intend to work in. Pass that value as repo with repo_confirmed: true. The first successful lock establishes task/session repository scope; later repo mismatches fail.",
         %{
           "agent_id" => %{"type" => "string"},
           "task_id" => %{
             "type" => "string",
             "description" => "Task slug (e.g. fix-login-bug)"
           },
-          "file_path" => %{"type" => "string"}
+          "file_path" => %{"type" => "string"},
+          "repo" => %{
+            "type" => "string",
+            "description" => "Required on the first lock; repository scope for this task"
+          },
+          "repo_confirmed" => %{
+            "type" => "boolean",
+            "description" =>
+              "Required true on the first lock after verifying this is the intended local checkout"
+          },
+          "workspace_id" => %{
+            "type" => "string",
+            "description" => "Optional workspace or checkout identifier"
+          }
         },
         ["agent_id", "task_id", "file_path"]
       ),
@@ -535,7 +548,16 @@ defmodule Acs.MCP.Tools do
             "description" =>
               "Filter by status (default: approved). Use 'all' for no filter. Values: proposed, approved, rejected, stale, deprecated, archived"
           },
-          "limit" => %{"type" => "integer", "description" => "Max results"}
+          "limit" => %{"type" => "integer", "description" => "Max results"},
+          "repo" => %{
+            "type" => "string",
+            "description" => "Repository filter; the first lock establishes this scope"
+          },
+          "repo_mode" => %{
+            "type" => "string",
+            "description" => "Repository mode: exact, local, or blended"
+          },
+          "origin" => %{"type" => "string", "description" => "Memory origin: agent or chat"}
         },
         []
       ),
@@ -1337,7 +1359,13 @@ defmodule Acs.MCP.Tools do
               %{
                 tool: "lock_file",
                 prompt: "Lock file to prevent concurrent edits",
-                params: %{agent_id: agent_id, task_id: task_id, file_path: fp}
+                params: %{
+                  agent_id: agent_id,
+                  task_id: task_id,
+                  file_path: fp,
+                  repo: "<Repo from AGENTS_STEWARD.md>",
+                  repo_confirmed: true
+                }
               }
             end
 
@@ -1372,7 +1400,13 @@ defmodule Acs.MCP.Tools do
               %{
                 tool: "lock_file",
                 prompt: "Lock file to prevent concurrent edits",
-                params: %{agent_id: agent_id, task_id: task_id, file_path: "<file_path>"}
+                params: %{
+                  agent_id: agent_id,
+                  task_id: task_id,
+                  file_path: "<file_path>",
+                  repo: "<Repo from AGENTS_STEWARD.md>",
+                  repo_confirmed: true
+                }
               },
               %{
                 tool: "generate_guidance_packet",
