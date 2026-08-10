@@ -95,4 +95,19 @@ defmodule Acs.MCP.Tools.AgentIdentityTest do
     assert packet.agent_identity =~ "user + pool"
     assert packet.get_started =~ ~s(Connected user: "Nahar")
   end
+
+  test "coding get_started echoes an already-qualified _auth_agent_id verbatim" do
+    assert {:ok, packet} =
+             Tools.call_tool("get_started", %{
+               "audience" => "coding",
+               "_auth_agent_id" => "nahar_emet_Alice",
+               "_auth_attribution" => "nahar_emet",
+               "_auth_role" => "admin",
+               "_auth_audience" => "coding"
+             })
+
+    assert packet.connected_user == "nahar_emet"
+    assert packet.your_agent_id == "nahar_emet_Alice"
+    assert packet.agent_identity =~ ~s(Pass agent_id exactly "nahar_emet_Alice")
+  end
 end

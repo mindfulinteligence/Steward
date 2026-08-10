@@ -420,7 +420,7 @@ defmodule Acs.MCP.Tools.CoreHandlers do
   defp coding_get_started(args) when is_map(args) do
     you = connected_user_from_args(args) || Acs.Org.usable_developer_name()
     raw_agent = agent_name_from_args(args)
-    agent_name = resolve_coding_agent_name(raw_agent || you)
+    agent_name = if is_binary(raw_agent), do: raw_agent, else: resolve_coding_agent_name(you)
     identity = coding_identity_guidance(you, agent_name)
 
     %{
