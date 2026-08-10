@@ -33,10 +33,10 @@ A `repo` is a **declared project/repository name** (e.g. `steward_acs`, `acme-we
 The agent may call `get_started` at session start, but the authoritative working context is established by the first successful file lock. This prevents the ACS server checkout or stale prompt context from silently determining where an agent is working.
 
 1. On install, the coding system prompt (`AGENTS_STEWARD.md` in the repo root, or `priv/prompts/coding_system_prompt.md` fallback) declares `Repo: <name>`.
-2. The first `lock_file` call must include `repo` when the task has no repo yet. ACS persists it on the task and binds it to the MCP session and agent fallback context.
+2. The agent must confirm that the discovered checkout is the intended working repository, then the first `lock_file` call must include `repo` and `repo_confirmed: true` when the task has no repo yet. ACS persists it on the task and binds it to the MCP session and agent fallback context.
 3. Later locks on the task must match the established repo; mismatches are rejected.
 4. `get_started` remains useful guidance, but authenticated session repo and task repo take precedence for saves and retrieval.
-5. Agents never invent a repo name; if no repo exists, the first lock fails with an actionable request to provide `repo`.
+5. Agents never invent a repo name; if no repo exists, or the discovered repo has not been confirmed, the first lock fails with an actionable request to provide and confirm `repo`.
 6. Saves stamp `repo` from locked task/session context; unknown context is not silently converted into a repository.
 
 Context rules:
@@ -132,6 +132,7 @@ At minimum test:
 
 - coding `get_started` returns the declared repo (or the ask-the-human hint);
 - first `lock_file` establishes task/session repo and subsequent mismatches fail;
+- first `lock_file` requires explicit confirmation that the discovered checkout is the intended repository;
 - saves stamp `repo` and `origin`; IDs do not collide for identical titles across repos;
 - missing context falls back to org-wide data without inventing a repo;
 - task repo mismatch is rejected after first lock;
