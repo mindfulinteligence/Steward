@@ -312,8 +312,15 @@ defmodule Acs.Memory.HybridSearchTest do
           log_search: false
         )
 
-      assert Enum.any?(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_exact"))
-      refute Enum.any?(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_other"))
+      assert Enum.any?(
+               result.results,
+               &memory_id_matches?(&1.memory_id, "test_hybrid_repo_exact")
+             )
+
+      refute Enum.any?(
+               result.results,
+               &memory_id_matches?(&1.memory_id, "test_hybrid_repo_other")
+             )
     after
       cleanup_test_memories("test_hybrid_repo_exact")
       cleanup_test_memories("test_hybrid_repo_other")
@@ -330,7 +337,11 @@ defmodule Acs.Memory.HybridSearchTest do
           log_search: false
         )
 
-      hit = Enum.find(result.results, &memory_id_matches?(&1.memory_id, "test_hybrid_repo_rank_other"))
+      hit =
+        Enum.find(
+          result.results,
+          &memory_id_matches?(&1.memory_id, "test_hybrid_repo_rank_other")
+        )
 
       assert hit.cross_repo == true
       assert hit.scores.repo <= 0.2
