@@ -142,13 +142,14 @@ fi
 # Pass flags as separate argv (never a leading "-f …" string — ssh/bash can resplit it).
 # shellcheck disable=SC2029
 CUTOVER=$(ssh "${SERVER}" bash -s -- \
-  "$MODE" "$REMOTE_DIR" "$COMPOSE_FILE" "$WITH_POSTGRES" "${ACS_IMAGE_TAG:-}" <<'REMOTE'
+  "$MODE" "$REMOTE_DIR" "$COMPOSE_FILE" "$WITH_POSTGRES" "${ACS_IMAGE_TAG:-}" "$HEALTH_WAIT_SECONDS" <<'REMOTE'
 set -euo pipefail
 MODE="$1"
 REMOTE_DIR="$2"
 COMPOSE_FILE="$3"
 WITH_POSTGRES="$4"
 ACS_IMAGE_TAG="${5:-}"
+HEALTH_WAIT_SECONDS="${6:-300}"
 
 cd "$REMOTE_DIR"
 # shellcheck source=scripts/lib/acs_bluegreen.sh
