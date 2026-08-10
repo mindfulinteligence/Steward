@@ -157,7 +157,9 @@ defmodule AcsWeb.AcsLive.SpecsLive do
   end
 
   @impl true
-  def handle_event("deprecate-spec", %{"app" => app, "id" => id} = params, socket) do
+  def handle_event("deprecate-spec", %{"app" => app} = params, socket) do
+    id = params["spec_id"] || params["id"]
+
     case Loader.load(app, id) do
       {:ok, entry} ->
         if Abac.can_edit?(viewer_abac(socket), entry) do
@@ -173,55 +175,6 @@ defmodule AcsWeb.AcsLive.SpecsLive do
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not load this document. Try again.")}
-    end
-  end
-
-  defp deprecate_with_replacement(socket, entry, replacement_id) do
-    replacement =
-      Enum.find(socket.assigns.replacement_candidates, fn candidate ->
-        candidate.app <> "|" <> candidate.id == replacement_id
-      end)
-
-    case replacement do
-      nil ->
-        {:noreply, put_flash(socket, :error, "Choose an approved replacement first.")}
-
-      replacement ->
-        if Abac.can_edit?(viewer_abac(socket), replacement) do
-          case Lineage.deprecate(entry, replacement) do
-            {:ok, deprecated, replacement} ->
-              case Loader.save(replacement) do
-                :ok ->
-                  case Loader.save(deprecated) do
-                    :ok ->
-                      {:noreply,
-                       socket
-                       |> put_flash(:info, "Document deprecated and linked to its replacement ⟳")
-                       |> assign(selected_spec: nil)
-                       |> load_data()}
-
-                    {:error, _reason} ->
-                      {:noreply,
-                       put_flash(socket, :error, "Could not save the deprecated document.")}
-                  end
-
-                {:error, _reason} ->
-                  {:noreply, put_flash(socket, :error, "Could not save the replacement link.")}
-              end
-
-            {:error, :entry_not_approved} ->
-              {:noreply, put_flash(socket, :error, "Only approved documents can be deprecated.")}
-
-            {:error, :replacement_not_approved} ->
-              {:noreply, put_flash(socket, :error, "The replacement must be approved first.")}
-
-            {:error, _reason} ->
-              {:noreply, put_flash(socket, :error, "Choose a different replacement document.")}
-          end
-        else
-          {:noreply,
-           put_flash(socket, :error, "Access denied: cannot edit the replacement document.")}
-        end
     end
   end
 
@@ -338,6 +291,55 @@ defmodule AcsWeb.AcsLive.SpecsLive do
   @impl true
   def handle_event(_event, _params, socket) do
     {:noreply, socket}
+  end
+
+  defp deprecate_with_replacement(socket, entry, replacement_id) do
+    replacement =
+      Enum.find(socket.assigns.replacement_candidates, fn candidate ->
+        candidate.app <> "|" <> candidate.id == replacement_id
+      end)
+
+    case replacement do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Choose an approved replacement first.")}
+
+      replacement ->
+        if Abac.can_edit?(viewer_abac(socket), replacement) do
+          case Lineage.deprecate(entry, replacement) do
+            {:ok, deprecated, replacement} ->
+              case Loader.save(replacement) do
+                :ok ->
+                  case Loader.save(deprecated) do
+                    :ok ->
+                      {:noreply,
+                       socket
+                       |> put_flash(:info, "Document deprecated and linked to its replacement ⟳")
+                       |> assign(selected_spec: nil)
+                       |> load_data()}
+
+                    {:error, _reason} ->
+                      {:noreply,
+                       put_flash(socket, :error, "Could not save the deprecated document.")}
+                  end
+
+                {:error, _reason} ->
+                  {:noreply, put_flash(socket, :error, "Could not save the replacement link.")}
+              end
+
+            {:error, :entry_not_approved} ->
+              {:noreply, put_flash(socket, :error, "Only approved documents can be deprecated.")}
+
+            {:error, :replacement_not_approved} ->
+              {:noreply, put_flash(socket, :error, "The replacement must be approved first.")}
+
+            {:error, _reason} ->
+              {:noreply, put_flash(socket, :error, "Choose a different replacement document.")}
+          end
+        else
+          {:noreply,
+           put_flash(socket, :error, "Access denied: cannot edit the replacement document.")}
+        end
+    end
   end
 
   @impl true
@@ -682,7 +684,7 @@ defmodule AcsWeb.AcsLive.SpecsLive do
                   <%= if Enum.any?(@replacement_candidates, &(&1.id != @selected_spec.id)) do %>
                     <form phx-submit="deprecate-spec" style="display: flex; gap: 6px; align-items: center;">
                       <input type="hidden" name="app" value={@selected_spec.app} />
-                      <input type="hidden" name="id" value={@selected_spec.id} />
+                      <input type="hidden" name="spec_id" value={@selected_spec.id} />
                       <select name="replacement_id" required class="form-control form-control-sm" aria-label="Replacement document">
                         <option value="">Replacement…</option>
                         <%= for candidate <- @replacement_candidates, candidate.id != @selected_spec.id do %>

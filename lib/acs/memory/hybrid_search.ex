@@ -223,7 +223,7 @@ defmodule Acs.Memory.HybridSearch do
     end
   end
 
-  defp run_lexical_and_semantic(query, lexical_opts, nil, _org, _limit) do
+  defp run_lexical_and_semantic(query, lexical_opts, nil, _org, _limit, _opts) do
     {Indexer.search(query, lexical_opts), %{}}
   end
 
