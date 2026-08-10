@@ -21,16 +21,54 @@ defmodule Acs.Repo.Migrations.AddRepoOriginToSpecSkillEmbeddings do
   end
 
   defp table_exists?(table) do
-    case repo().query("SELECT 1 FROM #{table} LIMIT 0") do
-      {:ok, _} -> true
-      _ -> false
+    case repo().__adapter__() do
+      Ecto.Adapters.Postgres ->
+        {:ok, %{rows: [[exists]]}} =
+          repo().query(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.tables " <>
+              "WHERE table_schema = current_schema() AND table_name = $1)",
+            [table]
+          )
+
+        exists
+
+      Ecto.Adapters.SQLite3 ->
+        {:ok, %{rows: rows}} =
+          repo().query(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+            [table]
+          )
+
+        rows != []
+
+      _ ->
+        false
     end
   end
 
   defp add_column_if_missing(table, column) do
-    case repo().query("SELECT #{column} FROM #{table} LIMIT 0") do
-      {:ok, _} -> :ok
-      _ -> execute("ALTER TABLE #{table} ADD COLUMN #{column} TEXT")
+    column_exists? =
+      case repo().__adapter__() do
+        Ecto.Adapters.Postgres ->
+          {:ok, %{rows: [[exists]]}} =
+            repo().query(
+              "SELECT EXISTS (SELECT 1 FROM information_schema.columns " <>
+                "WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2)",
+              [table, column]
+            )
+
+          exists
+
+        Ecto.Adapters.SQLite3 ->
+          {:ok, %{rows: rows}} = repo().query("PRAGMA table_info(#{table})")
+          Enum.any?(rows, fn row -> Enum.at(row, 1) == column end)
+
+        _ ->
+          false
+      end
+
+    unless column_exists? do
+      execute("ALTER TABLE #{table} ADD COLUMN #{column} TEXT")
     end
   end
 end

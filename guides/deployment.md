@@ -86,6 +86,7 @@ SERVER=ubuntu@YOUR_HOST ./scripts/backup-prod.sh
 ```
 
 `deploy.sh` cutover is a single SSH session. Images carry `org.opencontainers.image.revision` + `.dirty` labels for `status.sh`.
+The idle-slot health wait defaults to 300 seconds (`HEALTH_WAIT_SECONDS`); if it expires, deploy prints the container health history and last 120 log lines before leaving the active slot untouched.
 
 ### Neon database
 

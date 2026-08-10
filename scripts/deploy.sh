@@ -24,6 +24,7 @@ REMOTE_DIR="${REMOTE_DIR:-/home/ubuntu/steward_acs}"
 MODE="deploy"
 ALLOW_DIRTY="${ALLOW_DIRTY:-0}"
 SKIP_SMOKE="${SKIP_SMOKE:-0}"
+HEALTH_WAIT_SECONDS="${HEALTH_WAIT_SECONDS:-300}"
 FORCE_NO_CACHE="${FORCE_NO_CACHE:-0}"
 BUILD_NO_CACHE=()
 if [[ "$FORCE_NO_CACHE" == "1" ]]; then
@@ -185,12 +186,21 @@ env_set() {
 
 wait_healthy() {
   local name="$1" status=starting
-  for _ in $(seq 1 60); do
+  local attempts=$((HEALTH_WAIT_SECONDS / 2))
+  for _ in $(seq 1 "$attempts"); do
     status=$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo starting)
     [[ "$status" == "healthy" ]] && break
     sleep 2
   done
   echo "$status"
+}
+
+report_unhealthy() {
+  local name="$1"
+  echo "ERROR: ${name} did not become healthy within ${HEALTH_WAIT_SECONDS}s" >&2
+  docker inspect -f 'container={{.Name}} state={{.State.Status}} exit={{.State.ExitCode}} health={{.State.Health.Status}}' "$name" 2>/dev/null || true
+  docker inspect -f '{{range .State.Health.Log}}{{printf "health exit=%d output=%s\\n" .ExitCode .Output}}{{end}}' "$name" 2>/dev/null || true
+  docker logs --tail 120 "$name" 2>&1 || true
 }
 
 current_tag="$(env_get ACS_IMAGE_TAG || true)"
@@ -269,7 +279,10 @@ fi
 
 echo "[remote] waiting for ${NEXT_CTR} healthy"
 STATUS="$(wait_healthy "$NEXT_CTR")"
-[[ "$STATUS" == "healthy" ]] || { echo "ERROR: ${NEXT_CTR} not healthy (${STATUS})" >&2; exit 1; }
+if [[ "$STATUS" != "healthy" ]]; then
+  report_unhealthy "$NEXT_CTR"
+  exit 1
+fi
 
 # Seed org registry into the data volume when missing (shared volume — either slot).
 if ! docker exec "$NEXT_CTR" sh -c 'test -s /data/orgs.yaml' 2>/dev/null; then

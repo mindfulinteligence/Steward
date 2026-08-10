@@ -51,7 +51,7 @@ docker version >/dev/null
 docker compose version >/dev/null
 
 if ! command -v infisical >/dev/null 2>&1; then
-  curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' | sudo -E bash
+  curl -1sLf 'https://artifacts-cli.infisical.com/setup.deb.sh' | sudo -E bash
   sudo apt-get install -y infisical
 fi
 infisical --version >/dev/null

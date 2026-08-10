@@ -32,6 +32,7 @@ Workflow: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 4. Confirm Actions green, then smoke (below).
 
 Cutover keeps the live slot serving until the idle slot is healthy, then reloads Caddy upstream and stops the old slot. Caddy is force-recreated only when `Caddyfile.multitenant` / TLS certs change (hash in `CADDY_BUNDLE_HASH`). Claude SSE sessions on the old process still drop at stop — reconnect should hit the already-healthy new slot.
+The idle-slot health wait defaults to 300 seconds (`HEALTH_WAIT_SECONDS`). On timeout, `deploy.sh` prints Docker health history and the last 120 container log lines while leaving the active slot serving.
 
 Path filters on `push` to `prod`: `lib/`, `config/`, `priv/`, `assets/`, `mix.*`, `Dockerfile`, multitenant compose/Caddy, `caddy/`, `scripts/deploy.sh`, `scripts/lib/`, `scripts/bootstrap-server.sh`, `scripts/infisical-compose.sh`, `ci.yml` / `deploy.yml`.
 
