@@ -47,6 +47,7 @@ defmodule Acs.MCP.CoreToolRoles do
     get_started
     claim_work
     release_work
+    close_work
     create_work
     lock_file
     unlock_file

@@ -700,7 +700,9 @@ defmodule AcsWeb.AcsLive.MemoryLive do
                   <%= if flags["audited_at"] || flags["auditedAt"] do %>
                     <span>Audited: <%= format_datetime_string(flags["audited_at"] || flags["auditedAt"]) %></span>
                   <% end %>
-                  <%= if Map.get(flags, "needs_human_review") || Map.get(flags, "audit_error_count", 0) > 0 do %>
+                  <%= if @selected_memory.status == "proposed" &&
+                          (Map.get(flags, "needs_human_review") ||
+                             Map.get(flags, "audit_error_count", 0) > 0) do %>
                     <span style="color: #d97706; font-weight: 600;">Needs review</span>
                   <% end %>
                 </div>
@@ -806,6 +808,10 @@ defmodule AcsWeb.AcsLive.MemoryLive do
   defp decode_auditor_flags(_), do: nil
 
   defp needs_human_review?(memory) do
+    memory.status == "proposed" and has_review_flags?(memory)
+  end
+
+  defp has_review_flags?(memory) do
     case decode_auditor_flags(memory.auditor_flags) do
       flags when is_map(flags) ->
         review_flag?(flags["needs_human_review"] || flags["needsHumanReview"]) or

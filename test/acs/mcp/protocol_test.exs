@@ -197,7 +197,21 @@ defmodule Acs.MCP.ProtocolTest do
   end
 
   describe "local mode coding identity (single-tenant admin self-identifies)" do
-    test "instructions and get_started expose no default agent identity" do
+    setup do
+      original = Application.get_env(:steward_acs, :developer_name)
+      Application.put_env(:steward_acs, :developer_name, "Nahar")
+
+      on_exit(fn ->
+        case original do
+          nil -> Application.delete_env(:steward_acs, :developer_name)
+          _ -> Application.put_env(:steward_acs, :developer_name, original)
+        end
+      end)
+
+      :ok
+    end
+
+    test "instructions expose no default identity but get_started uses the workspace developer name like remote" do
       initialize = %{
         "jsonrpc" => "2.0",
         "id" => 30,
@@ -222,11 +236,11 @@ defmodule Acs.MCP.ProtocolTest do
                Protocol.handle_message(call, "admin", "acme", [], nil, nil, "Nahar")
 
       decoded = Jason.decode!(text)
-      assert decoded["connected_user"] == nil
-      assert decoded["authenticated_as"] == nil
-      assert decoded["your_agent_id"] == nil
-      assert decoded["agent_identity"] =~ "self-identify"
-      assert decoded["get_started"] =~ "your_name"
+      assert decoded["connected_user"] == "Nahar"
+      assert decoded["authenticated_as"] == "Nahar"
+      assert decoded["your_agent_id"] =~ ~r/^nahar_/
+      assert decoded["agent_identity"] =~ "user + pool"
+      assert decoded["get_started"] =~ ~s(Connected user: "Nahar")
     end
 
     test "local admin coding agent can create_work under its own agent_id" do
@@ -327,7 +341,7 @@ defmodule Acs.MCP.ProtocolTest do
       assert decoded["get_started"] =~ ~r/ACS uses "nahar_emet_/
     end
 
-    test "two sessions of the same user get distinct qualified agent names" do
+    test "sessions of the same user resolve the same stable qualified agent name" do
       alias Acs.MCP.ClientSession
 
       session_a = "sess_qual_a_#{System.unique_integer([:positive])}"
@@ -344,8 +358,7 @@ defmodule Acs.MCP.ProtocolTest do
         end)
 
       assert name_a =~ ~r/^nahar_emet_/
-      assert name_b =~ ~r/^nahar_emet_/
-      refute name_a == name_b
+      assert name_b == name_a
     end
   end
 end

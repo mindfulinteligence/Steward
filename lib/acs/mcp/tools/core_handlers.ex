@@ -21,6 +21,7 @@ defmodule Acs.MCP.Tools.CoreHandlers do
   """
   alias Acs.Acs.Cache
   alias Acs.MCP.LogStore
+  alias Acs.MCP.Tools.ErrorHandlers
   require Logger
   import Ecto.Query, only: [from: 2]
 
@@ -82,6 +83,64 @@ defmodule Acs.MCP.Tools.CoreHandlers do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  def acs_close_work(%{"agent_id" => agent_id, "task_id" => task_id} = args) do
+    case Acs.release_task(task_id, agent_id) do
+      {:ok, task} ->
+        spec = maybe_save_spec(args)
+        feedback = maybe_submit_feedback(args)
+
+        {:ok,
+         %{
+           status: "done",
+           task_id: task.slug,
+           agent_id: agent_id,
+           spec: spec,
+           feedback: feedback,
+           message:
+             "Task closed: released, info saved, and feedback submitted. Save skills/memories BEFORE calling close_work so they're captured first."
+         }}
+
+      {:error, :not_owner} ->
+        {:ok, %{status: "not_owner", message: "Task locked by another agent"}}
+
+      {:error, reason} when is_atom(reason) ->
+        {:error, Atom.to_string(reason)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_save_spec(args) do
+    if is_binary(args["app"]) && args["app"] != "" &&
+         is_binary(args["path"]) && args["path"] != "" do
+      case Acs.Specs.Tools.call_tool("specs_propose", args) do
+        {:ok, %{"status" => status} = entry} ->
+          %{
+            saved: true,
+            status: status,
+            app: Map.get(entry, "app") || args["app"],
+            path: Map.get(entry, "id") || args["path"]
+          }
+
+        {:ok, entry} when is_map(entry) ->
+          %{saved: true, path: Map.get(entry, "id") || args["path"]}
+
+        {:error, reason} ->
+          %{saved: false, error: reason}
+      end
+    else
+      %{saved: false, reason: "No app/path provided — skipped spec save"}
+    end
+  end
+
+  defp maybe_submit_feedback(args) do
+    case ErrorHandlers.acs_submit_task_feedback(args) do
+      {:ok, %{message: message}} -> %{submitted: true, message: message}
+      {:error, reason} -> %{submitted: false, error: reason}
     end
   end
 
@@ -359,8 +418,9 @@ defmodule Acs.MCP.Tools.CoreHandlers do
   end
 
   defp coding_get_started(args) when is_map(args) do
-    you = connected_user_from_args(args)
-    agent_name = agent_name_from_args(args) || you
+    you = connected_user_from_args(args) || Acs.Org.usable_developer_name()
+    raw_agent = agent_name_from_args(args)
+    agent_name = resolve_coding_agent_name(raw_agent || you)
     identity = coding_identity_guidance(you, agent_name)
 
     %{
@@ -512,6 +572,12 @@ defmodule Acs.MCP.Tools.CoreHandlers do
         nil
     end
   end
+
+  defp resolve_coding_agent_name(name) when is_binary(name) do
+    Acs.MCP.ClientSession.get_or_assign_qualified_agent_name(name) || name
+  end
+
+  defp resolve_coding_agent_name(_), do: nil
 
   defp chat_get_started(args) when is_map(args) do
     you = connected_user_from_args(args)

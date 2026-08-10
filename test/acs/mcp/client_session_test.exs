@@ -90,4 +90,54 @@ defmodule Acs.MCP.ClientSessionTest do
       assert name2 == name1
     end)
   end
+
+  test "qualified agent name is stable across non-sticky requests for the same identity" do
+    session_1 = "sess_qual_1_#{System.unique_integer([:positive])}"
+    session_2 = "sess_qual_2_#{System.unique_integer([:positive])}"
+
+    name_1 =
+      ClientSession.bind(session_1, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      end)
+
+    name_2 =
+      ClientSession.bind(session_2, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      end)
+
+    assert name_1 =~ ~r/^nahar_emet_/
+    assert name_2 == name_1
+  end
+
+  test "qualified agent name sticks to a reused (sticky) session" do
+    session_id = "sess_qual_sticky_#{System.unique_integer([:positive])}"
+
+    ClientSession.bind(session_id, fn ->
+      name1 = ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      name2 = ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+
+      assert is_binary(name1)
+      assert name1 != ""
+      assert name2 == name1
+    end)
+  end
+
+  test "different identities get distinct qualified agent names" do
+    session_alpha = "sess_qual_a2_#{System.unique_integer([:positive])}"
+    session_beta = "sess_qual_b2_#{System.unique_integer([:positive])}"
+
+    name_alpha =
+      ClientSession.bind(session_alpha, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      end)
+
+    name_beta =
+      ClientSession.bind(session_beta, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Somebody Else")
+      end)
+
+    assert name_alpha =~ ~r/^nahar_emet_/
+    assert name_beta =~ ~r/^somebody_else_/
+    refute name_alpha == name_beta
+  end
 end

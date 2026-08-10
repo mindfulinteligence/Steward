@@ -253,6 +253,53 @@ defmodule Acs.Memory.StoreModeTest do
     assert Acs.Application.memory_background_children(true, false) == []
   end
 
+  test "approve/reject transition clears human-review flags from the projection" do
+    Application.put_env(:steward_acs, :multi_tenant, true)
+    org = create_org("ledger-review-clear")
+    memory = memory_fixture("review-flags", org.slug)
+    storage_id = Acs.Memory.Indexer.storage_id(org.slug, memory.id)
+
+    review_flags =
+      Jason.encode!(%{
+        "needs_human_review" => true,
+        "audit_error_count" => 2,
+        "last_audit_error" => "LLM recommended human_review",
+        "audit_verdict" => "human_review",
+        "quality_score" => 3
+      })
+
+    Acs.Org.with_current(org.slug, fn ->
+      assert {:ok, _} =
+               Store.save(memory,
+                 actor: %{type: "system", id: "test"},
+                 source: "system",
+                 message: "Create"
+               )
+
+      Repo.update_all(
+        from(m in Acs.Memory.Schema, where: m.id == ^storage_id),
+        set: [auditor_flags: review_flags]
+      )
+
+      assert {:ok, %{revision: approved_revision}} =
+               Store.transition(memory.id, "approved",
+                 org: org.slug,
+                 actor: %{type: "user", id: "42"},
+                 source: "web",
+                 message: "Approve"
+               )
+
+      approved_row = Repo.get!(Acs.Memory.Schema, storage_id)
+      approved_flags = Jason.decode!(approved_row.auditor_flags)
+      refute Map.has_key?(approved_flags, "needs_human_review")
+      refute Map.has_key?(approved_flags, "audit_error_count")
+      refute Map.has_key?(approved_flags, "last_audit_error")
+      assert approved_flags["audit_verdict"] == "human_review"
+      assert approved_flags["quality_score"] == 3
+      assert approved_revision.operation == "transition"
+    end)
+  end
+
   defp memory_fixture(suffix, org) do
     Acs.Memory.new(%{
       "id" => "memory-#{suffix}",

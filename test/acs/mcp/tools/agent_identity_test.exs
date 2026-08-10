@@ -71,7 +71,17 @@ defmodule Acs.MCP.Tools.AgentIdentityTest do
     assert packet.get_started =~ "Connected user: \"nahar-dev\""
   end
 
-  test "local mode coding get_started has no default agent identity (self-identify)" do
+  test "local mode coding get_started uses the workspace developer name like remote" do
+    original = Application.get_env(:steward_acs, :developer_name)
+    Application.put_env(:steward_acs, :developer_name, "Nahar")
+
+    on_exit(fn ->
+      case original do
+        nil -> Application.delete_env(:steward_acs, :developer_name)
+        _ -> Application.put_env(:steward_acs, :developer_name, original)
+      end
+    end)
+
     assert {:ok, packet} =
              Tools.call_tool("get_started", %{
                "audience" => "coding",
@@ -79,11 +89,10 @@ defmodule Acs.MCP.Tools.AgentIdentityTest do
                "_auth_audience" => "coding"
              })
 
-    assert packet.connected_user == nil
-    assert packet.authenticated_as == nil
-    assert packet.your_agent_id == nil
-    assert packet.agent_identity =~ "self-identify"
-    assert packet.agent_identity =~ "your_name"
-    assert packet.get_started =~ "your_name"
+    assert packet.connected_user == "Nahar"
+    assert packet.authenticated_as == "Nahar"
+    assert packet.your_agent_id =~ ~r/^nahar_/
+    assert packet.agent_identity =~ "user + pool"
+    assert packet.get_started =~ ~s(Connected user: "Nahar")
   end
 end

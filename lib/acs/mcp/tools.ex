@@ -21,6 +21,7 @@ defmodule Acs.MCP.Tools do
     # ACS Core (workflow) tools
     "claim_work" => "acs_core",
     "release_work" => "acs_core",
+    "close_work" => "acs_core",
     "create_work" => "acs_core",
     "resolve_user_task" => "acs_core",
     "lock_file" => "acs_core",
@@ -137,6 +138,97 @@ defmodule Acs.MCP.Tools do
           "task_id" => %{
             "type" => "string",
             "description" => "Task slug (kebab-case from title, e.g. fix-login-bug)"
+          }
+        },
+        ["agent_id", "task_id"]
+      ),
+      tool_def(
+        "close_work",
+        "Single-call task close-out: optionally save a module spec/plan revision (pass app + path and spec fields), release the task and its file locks, then submit completion feedback. Returns combined results for spec save, release, and feedback. Prefer this over the manual specs_propose → release_work → submit_task_feedback sequence.",
+        %{
+          "agent_id" => %{"type" => "string", "description" => "Your team member name."},
+          "task_id" => %{
+            "type" => "string",
+            "description" => "Task slug (kebab-case from title, e.g. fix-login-bug)"
+          },
+          "app" => %{
+            "type" => "string",
+            "description" =>
+              "App or project name (e.g. steward_acs, acme-corp). Optional — omit to skip spec save."
+          },
+          "path" => %{
+            "type" => "string",
+            "description" =>
+              "Entry path — module path (acs/memory/guidance) or document path (documents/marketing/campaign). Optional — omit to skip spec save."
+          },
+          "title" => %{"type" => "string", "description" => "Human-readable title"},
+          "document_type" => %{
+            "type" => "string",
+            "description" =>
+              "Kind of entry: \"spec\" for code module docs; knowledge|project|marketing|deliverable|policy|process|guideline|reference for non-code documents.",
+            "enum" => [
+              "spec",
+              "knowledge",
+              "project",
+              "marketing",
+              "deliverable",
+              "policy",
+              "process",
+              "guideline",
+              "reference"
+            ]
+          },
+          "purpose" => %{
+            "type" => "string",
+            "description" => "For module specs: why this module exists"
+          },
+          "invariants" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "Truths that must always hold"
+          },
+          "workflows" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "Expected call sequences / protocols"
+          },
+          "failure_modes" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "Known failure scenarios and handling"
+          },
+          "tags" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "Search tags"
+          },
+          "content" => %{
+            "type" => "string",
+            "description" => "Full markdown body for documents"
+          },
+          "learned_for_agents" => %{
+            "type" => "string",
+            "description" =>
+              "What did you learn that will help agents in the future? This creates a memory visible to all agents."
+          },
+          "had_issues" => %{
+            "type" => "string",
+            "description" =>
+              "What issues or obstacles did you encounter? Bugs, confusing guidance, time wasters."
+          },
+          "improvements" => %{
+            "type" => "string",
+            "description" =>
+              "What could Steward do better? Feature requests, workflow improvements, missing capabilities."
+          },
+          "info_needed" => %{
+            "type" => "string",
+            "description" =>
+              "What information was hard to find? Missing docs, poor search results, knowledge gaps."
+          },
+          "guidance_useful" => %{
+            "type" => "boolean",
+            "description" => "Was the guidance packet useful for this task/interaction?"
           }
         },
         ["agent_id", "task_id"]
@@ -1079,6 +1171,7 @@ defmodule Acs.MCP.Tools do
     "steward_work" => &ChatSurface.steward_work/1,
     "claim_work" => &CoreHandlers.acs_claim_work/1,
     "release_work" => &CoreHandlers.acs_release_work/1,
+    "close_work" => &CoreHandlers.acs_close_work/1,
     "create_work" => &CoreHandlers.acs_create_work/1,
     "resolve_user_task" => &CoreHandlers.acs_resolve_user_task/1,
     "lock_file" => &CoreHandlers.acs_lock_file/1,
@@ -1467,6 +1560,9 @@ defmodule Acs.MCP.Tools do
               }
             }
           ]
+
+        "close_work" ->
+          []
 
         "lock_file" ->
           [

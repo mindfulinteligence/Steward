@@ -39,7 +39,7 @@ defmodule Acs.Observability.AgentOps do
   @retrieve_tools ~w(ask query_memories query_specs skill_get specs_get generate_guidance_packet get_started)
   @write_tools ~w(save_memory documents_propose specs_propose skill_save set_memory_status specs_approve specs_reject)
   @intake_tools ~w(save_memory skill_save)
-  @task_tools ~w(create_work claim_work release_work submit_task_feedback list_tasks lock_file unlock_file get_present_status)
+  @task_tools ~w(create_work claim_work release_work close_work submit_task_feedback list_tasks lock_file unlock_file get_present_status)
 
   @doc """
   Log one MCP tool invocation.

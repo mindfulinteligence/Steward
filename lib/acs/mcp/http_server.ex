@@ -467,7 +467,7 @@ defmodule Acs.MCP.HTTPServer do
   # answer inline like /mcp/v1/messages.
   defp handle_streamable_post(conn) do
     conn = fetch_query_params(conn)
-    session_id = conn.query_params["session_id"]
+    session_id = session_id_from_conn(conn)
 
     if is_binary(session_id) and session_id != "" and
          Acs.MCP.SSESessionManager.alive?(session_id) do
@@ -479,7 +479,7 @@ defmodule Acs.MCP.HTTPServer do
 
   defp handle_json_rpc_http(conn) do
     conn = fetch_query_params(conn)
-    session_id = conn.query_params["session_id"] || generate_session_id()
+    session_id = session_id_from_conn(conn) || generate_session_id()
     seed_http_audience(conn, session_id)
 
     Logger.debug("MCP HTTP: received request on #{conn.request_path}")
@@ -588,6 +588,18 @@ defmodule Acs.MCP.HTTPServer do
 
   defp generate_session_id do
     "http_#{System.system_time(:millisecond)}_#{:crypto.strong_rand_bytes(8) |> Base.encode16(case: :lower)}"
+  end
+
+  # Streamable HTTP spec: the server returns the session in the `x-mcp-session-id`
+  # response header and clients echo it back on subsequent requests. Reuse it so
+  # `ClientSession.current_id()` stays stable across a client session — otherwise a
+  # fresh id is generated per request and per-session state (e.g. the qualified agent
+  # name) keeps rotating.
+  defp session_id_from_conn(conn) do
+    case Plug.Conn.get_req_header(conn, "x-mcp-session-id") do
+      [id | _] when is_binary(id) and id != "" -> id
+      _ -> nil
+    end
   end
 
   defp generate_sse_session_id do

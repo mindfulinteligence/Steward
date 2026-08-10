@@ -31,6 +31,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
     "create_work" => {"steward_work", "action", "create"},
     "claim_work" => {"steward_work", "action", "claim"},
     "release_work" => {"steward_work", "action", "release"},
+    "close_work" => {"steward_work", "action", "close"},
     "resolve_user_task" => {"steward_work", "action", "resolve_reminder"}
   }
 
@@ -175,6 +176,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
       "create_work" -> CoreHandlers.acs_create_work(routed_args)
       "claim_work" -> CoreHandlers.acs_claim_work(routed_args)
       "release_work" -> CoreHandlers.acs_release_work(routed_args)
+      "close_work" -> CoreHandlers.acs_close_work(routed_args)
       "resolve_user_task" -> CoreHandlers.acs_resolve_user_task(routed_args)
       nil -> {:error, "Invalid steward_work action"}
     end
@@ -211,6 +213,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
       "create" -> "create_work"
       "claim" -> "claim_work"
       "release" -> "release_work"
+      "close" -> "close_work"
       "resolve_reminder" -> "resolve_user_task"
       _ -> nil
     end
@@ -277,11 +280,12 @@ defmodule Acs.MCP.Tools.ChatSurface do
   def steward_work_def do
     tool_def(
       "steward_work",
-      "Create reminders or coordinate tracked work. Choose action=create, claim, release, or resolve_reminder. Timed reminders use create with kind=user plus due_at and remind_at.",
+      "Create reminders or coordinate tracked work. Choose action=create, claim, release, close, or resolve_reminder. Timed reminders use create with kind=user plus due_at and remind_at.",
       [
         branch(create_work_properties(), ["action", "title"]),
         branch(claim_work_properties(), ["action", "task_id"]),
         branch(release_work_properties(), ["action", "task_id"]),
+        branch(close_work_properties(), ["action", "task_id"]),
         branch(resolve_reminder_properties(), ["action", "task_id", "outcome"])
       ]
     )
@@ -503,6 +507,36 @@ defmodule Acs.MCP.Tools.ChatSurface do
 
   defp release_work_properties do
     %{"action" => enum("release"), "task_id" => string("Coordination task slug")}
+  end
+
+  defp close_work_properties do
+    %{
+      "action" => enum("close"),
+      "task_id" => string("Coordination task slug"),
+      "app" => string("App or project name; omit to skip spec save"),
+      "path" => string("Entry path; omit to skip spec save"),
+      "title" => string("Spec/document title"),
+      "document_type" => %{
+        "type" => "string",
+        "enum" => [
+          "spec",
+          "knowledge",
+          "project",
+          "marketing",
+          "deliverable",
+          "policy",
+          "process",
+          "guideline",
+          "reference"
+        ]
+      },
+      "purpose" => string("For module specs: why this module exists"),
+      "content" => string("Full markdown body for documents"),
+      "learned_for_agents" => string("Reusable insight"),
+      "had_issues" => string("Problems encountered"),
+      "improvements" => string("Suggested Steward improvements"),
+      "guidance_useful" => boolean("Whether guidance was useful")
+    }
   end
 
   defp resolve_reminder_properties do

@@ -8,6 +8,7 @@ defmodule Acs.Memory.Store do
   """
 
   alias Acs.Memory.{Indexer, Ledger, Loader}
+  alias Acs.Repo
 
   @status_types Acs.Governance.Status.primary_statuses() ++ ~w(stale archived parse_error)
 
@@ -94,20 +95,75 @@ defmodule Acs.Memory.Store do
         |> Map.merge(status_attrs)
         |> Acs.Memory.new()
 
-      save(
-        memory,
-        opts
-        |> put_expected_head(schema)
-        |> Keyword.put(:operation, "transition")
-        |> Keyword.put_new(:message, "Transition memory #{memory_id} to #{status}")
-        |> Keyword.update(
-          :metadata,
-          %{status: status, reason: reason},
-          &Map.merge(&1, %{status: status, reason: reason})
-        )
-      )
+      case save(
+             memory,
+             opts
+             |> put_expected_head(schema)
+             |> Keyword.put(:operation, "transition")
+             |> Keyword.put_new(:message, "Transition memory #{memory_id} to #{status}")
+             |> Keyword.update(
+               :metadata,
+               %{status: status, reason: reason},
+               &Map.merge(&1, %{status: status, reason: reason})
+             )
+           ) do
+        {:ok, _} = ok ->
+          clear_review_flags_if_resolved(schema.id, status)
+          ok
+
+        {:error, _} = error ->
+          error
+      end
     end
   end
+
+  # A human approve/reject resolves the review state: the projection upsert
+  # preserves auditor_flags (Indexer.@upsert_preserve_fields), so strip the
+  # review-state keys explicitly on the DB row after the transition.
+  @review_state_keys ~w(needs_human_review needsHumanReview audit_error_count
+                        auditErrorCount flagged_reason flagged_at
+                        last_audit_error last_audit_error_at)
+
+  defp clear_review_flags_if_resolved(storage_id, status)
+       when status in ~w(approved rejected) do
+    import Ecto.Query
+
+    case Repo.get(Acs.Memory.Schema, storage_id) do
+      nil ->
+        :ok
+
+      row ->
+        remaining =
+          row.auditor_flags
+          |> decode_auditor_flags()
+          |> Map.drop(@review_state_keys)
+
+        flags_json = if map_size(remaining) == 0, do: nil, else: Jason.encode!(remaining)
+
+        Repo.update_all(
+          from(m in Acs.Memory.Schema, where: m.id == ^storage_id),
+          set: [
+            auditor_flags: flags_json,
+            updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+          ]
+        )
+
+        :ok
+    end
+  end
+
+  defp clear_review_flags_if_resolved(_storage_id, _status), do: :ok
+
+  defp decode_auditor_flags(nil), do: %{}
+
+  defp decode_auditor_flags(json) when is_binary(json) do
+    case Jason.decode(json) do
+      {:ok, map} when is_map(map) -> map
+      _ -> %{}
+    end
+  end
+
+  defp decode_auditor_flags(_), do: %{}
 
   defp validate_transition(from, to) do
     if Acs.Governance.Status.primary?(from) and Acs.Governance.Status.primary?(to) and

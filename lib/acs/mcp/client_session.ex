@@ -64,19 +64,49 @@ defmodule Acs.MCP.ClientSession do
 
   @doc """
   Get or assign a pool-based agent name qualified with the human user's
-  name (e.g. `nahar_alice`) for the current session.
+  name (e.g. `nahar_alice`).
 
-  Used in multi-tenant prod so a single human can run several coding
-  agents at a time — each session gets its own `user_pool` agent name.
+  The name stays stable for the caller so it keeps validating against the
+  authenticated identity across requests:
+
+    * Sticky sessions (a stable bound session id) keep their own per-session
+      `user_pool` name — a single human can run several coding agents at a
+      time, each with its own name.
+    * Non-sticky HTTP sessions (a fresh session id per request) fall back to
+      the identity key `{:agent, prefix}`. The first assigned name is
+      mirrored there first-writer-wins, so every request of that human
+      resolves to the same name.
+    * Hits refresh the session TTL so long-running agents don't re-rotate
+      after the 1h expiry.
   """
   def get_or_assign_qualified_agent_name(prefix) when is_binary(prefix) and prefix != "" do
-    get_or_assign_qualified_agent_name(prefix, current_id() || agent_key(prefix))
+    session_key = current_id()
+    identity_key = agent_key(prefix)
+
+    case qualified_agent_name(session_key) do
+      name when is_binary(name) and name != "" ->
+        touch(session_key)
+        name
+
+      _ ->
+        case qualified_agent_name(identity_key) do
+          name when is_binary(name) and name != "" ->
+            touch(identity_key)
+            name
+
+          _ ->
+            name = get_or_assign_qualified_agent_name(prefix, session_key || identity_key)
+            mirror_identity_name(identity_key, name)
+            name
+        end
+    end
   end
 
   def get_or_assign_qualified_agent_name(prefix, key)
       when (is_binary(key) or is_tuple(key)) and not is_nil(key) do
     with {:ok, data} <- fetch(key),
          name when is_binary(name) and name != "" <- Map.get(data, :qualified_agent_name) do
+      put(key, Map.put(data, :qualified_agent_name, name))
       name
     else
       _ ->
@@ -94,6 +124,41 @@ defmodule Acs.MCP.ClientSession do
   end
 
   def get_or_assign_qualified_agent_name(_prefix, _key), do: nil
+
+  defp qualified_agent_name(nil), do: nil
+
+  defp qualified_agent_name(key) do
+    with {:ok, data} <- fetch(key),
+         name when is_binary(name) and name != "" <- Map.get(data, :qualified_agent_name) do
+      name
+    else
+      _ -> nil
+    end
+  end
+
+  defp touch(nil), do: :ok
+
+  defp touch(key) do
+    with {:ok, data} <- fetch(key) do
+      put(key, data)
+    else
+      _ -> :ok
+    end
+  end
+
+  defp mirror_identity_name(nil, _name), do: :ok
+
+  defp mirror_identity_name(identity_key, name) when is_binary(name) and name != "" do
+    if is_nil(qualified_agent_name(identity_key)) do
+      with {:ok, data} <- fetch(identity_key) do
+        put(identity_key, Map.put(data, :qualified_agent_name, name))
+      else
+        _ -> put(identity_key, %{qualified_agent_name: name})
+      end
+    end
+
+    :ok
+  end
 
   defp pool_agent_name(key) do
     with {:ok, data} <- fetch(key),
