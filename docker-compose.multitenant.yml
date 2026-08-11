@@ -64,7 +64,8 @@ x-steward-acs: &steward_acs
     AXIOM_LOGS: "${AXIOM_LOGS:-}"
     AXIOM_DATASET: "${AXIOM_DATASET:-steward_logs}"
     AXIOM_AGENT_OPS_DATASET: "${AXIOM_AGENT_OPS_DATASET:-steward_meta_analytics}"
-    AXIOM_DOMAIN: "${AXIOM_DOMAIN:-https://api.axiom.co}"
+      # Edge deployment URL preferred for OTLP (see Axiom edge docs).
+      AXIOM_DOMAIN: "${AXIOM_DOMAIN:-https://us-east-1.aws.edge.axiom.co}"
     # Hourly Meta-Harness: ops table + rollups shipped to AXIOM_AGENT_OPS_DATASET.
     META_HARNESS_ENABLED: "${META_HARNESS_ENABLED:-true}"
     # Invitation email (optional — copy-link only when either is empty).
@@ -118,7 +119,8 @@ services:
       AXIOM_LOGS: "${AXIOM_LOGS:?Set AXIOM_LOGS to enable host metrics}"
       AXIOM_METRICS_DATASET: "${AXIOM_METRICS_DATASET:-steward-acs-metrics}"
       # Edge deployment URL preferred for OTLP (see Axiom edge docs).
-      AXIOM_DOMAIN: "${AXIOM_DOMAIN:-https://api.axiom.co}"
+    # Edge deployment URL — api.axiom.co does not route /v1/ingest (events 404 silently).
+    AXIOM_DOMAIN: "${AXIOM_DOMAIN:-https://us-east-1.aws.edge.axiom.co}"
     volumes:
       - ./otel/collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
       - /:/hostfs:ro,rslave

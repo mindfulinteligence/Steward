@@ -18,7 +18,7 @@ axiom_token = System.get_env("AXIOM_LOGS", "") |> String.trim()
 
 if config_env() == :prod and axiom_token != "" do
   axiom_domain =
-    System.get_env("AXIOM_DOMAIN", "https://api.axiom.co")
+    System.get_env("AXIOM_DOMAIN", "https://us-east-1.aws.edge.axiom.co")
     |> String.trim()
     |> String.trim_trailing("/")
 
@@ -31,7 +31,7 @@ if config_env() == :prod and axiom_token != "" do
       (is_nil(domain_uri.port) or domain_uri.port in 1..65_535)
 
   unless valid_axiom_origin? do
-    raise "AXIOM_DOMAIN must be an HTTPS origin, for example https://api.axiom.co"
+    raise "AXIOM_DOMAIN must be an HTTPS origin, for example https://us-east-1.aws.edge.axiom.co"
   end
 
   axiom_dataset =
