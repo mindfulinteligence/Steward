@@ -43,6 +43,11 @@ on:
         required: true
         type: boolean
         default: false
+      rollback:
+        description: Roll back the target host to the previous image tag (no build)
+        required: true
+        type: boolean
+        default: false
 
   push:
     branches: [prod]
@@ -59,6 +64,7 @@ on:
       - "Caddyfile.multitenant"
       - "caddy/**"
       - "scripts/deploy.sh"
+      - "scripts/rollback.sh"
       - "scripts/bootstrap-server.sh"
       - "scripts/infisical-compose.sh"
       - "scripts/lib/**"
@@ -87,7 +93,8 @@ jobs:
         (needs.ci.result == 'skipped' &&
           github.event_name == 'workflow_dispatch' &&
           fromJSON(github.event.inputs.skip_ci))
-      )
+      ) &&
+      (github.event_name != 'workflow_dispatch' || !fromJSON(github.event.inputs.rollback))
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.environment || 'prod' }}
     outputs:
@@ -139,6 +146,7 @@ jobs:
       always() &&
       needs.build-push.result == 'success' &&
       (github.event_name != 'workflow_dispatch' || fromJSON(github.event.inputs.cutover)) &&
+      (github.event_name != 'workflow_dispatch' || !fromJSON(github.event.inputs.rollback)) &&
       (
         needs.ci.result == 'success' ||
         (needs.ci.result == 'skipped' &&
@@ -177,3 +185,38 @@ jobs:
             export REMOTE_DIR=/home/ubuntu/steward_acs
           fi
           ./scripts/deploy.sh --resume
+
+  rollback:
+    name: Roll back to previous tag
+    if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.rollback)
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'prod' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "${{ secrets.DEPLOY_HOST }}" >> ~/.ssh/known_hosts
+          printf '%s\n' \
+            "Host ${{ secrets.DEPLOY_HOST }}" \
+            "  IdentityFile ~/.ssh/id_deploy" \
+            "  IdentitiesOnly yes" \
+            "  StrictHostKeyChecking accept-new" \
+            > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Roll back with scripts/rollback.sh
+        env:
+          SERVER: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+          CONFIRM: yes
+          PUBLIC_URL: ${{ secrets.PUBLIC_URL }}
+        run: |
+          if [[ -n "${{ secrets.REMOTE_DIR }}" ]]; then
+            export REMOTE_DIR="${{ secrets.REMOTE_DIR }}"
+          else
+            export REMOTE_DIR=/home/ubuntu/steward_acs
+          fi
+          ./scripts/rollback.sh

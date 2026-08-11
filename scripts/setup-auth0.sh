@@ -214,7 +214,7 @@ if [[ -z "$MCP_API_ID" ]]; then
     \"name\": \"Steward ACS MCP\",
     \"identifier\": \"${AUDIENCE}\",
     \"signing_alg\": \"RS256\",
-    \"token_lifetime\": 86400
+    \"token_lifetime\": 604800
   }" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
   ok "Created MCP API id=${MCP_API_ID}"
 else

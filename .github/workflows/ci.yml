@@ -126,3 +126,42 @@ jobs:
 
       - name: Run credo
         run: mix credo --strict
+
+  # Boots a fresh disposable local ACS and calls every MCP tool over the wire.
+  # Catches tool crashes (ToolRegistry.safe_execute "Tool execution failed"),
+  # transport breakage, and new tools missing from the smoke. Same flow as
+  # scripts/local-tool-smoke.sh used on a developer machine.
+  tool-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "26.2.5"
+          elixir-version: "1.17.3"
+
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Install deps
+        run: mix deps.get
+
+      - name: Compile
+        run: mix compile
+
+      - name: Run MCP tool smoke on a fresh disposable instance
+        run: ./scripts/local-tool-smoke.sh
+        env:
+          MCP_API_KEY: ci_tool_smoke_key
+          PORT: 4101

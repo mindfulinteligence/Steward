@@ -2,6 +2,8 @@ defmodule Acs.DevelopersTest do
   use Acs.DataCase, async: false
 
   alias Acs.Developers
+  alias Acs.Developers.DeveloperApiKey
+  alias Acs.Repo
 
   describe "generate_key/2" do
     test "generates a valid developer key" do
@@ -82,6 +84,35 @@ defmodule Acs.DevelopersTest do
 
     test "returns error for unknown id" do
       assert {:error, :not_found} = Developers.revoke(Ecto.UUID.generate())
+    end
+  end
+
+  describe "revoke_by_name/2" do
+    test "revokes a key by developer_name" do
+      {:ok, %{developer: dev}} = Developers.generate_key("by-name-revoke")
+      assert {:ok, %{active: false}} = Developers.revoke_by_name("by-name-revoke")
+      refute Repo.get!(DeveloperApiKey, dev.id).active
+    end
+
+    test "revokes ALL keys sharing a developer_name (was a crash)" do
+      {:ok, %{developer: dev1}} = Developers.generate_key("dup-name")
+      {:ok, %{developer: dev2}} = Developers.generate_key("dup-name")
+
+      # Regression: Repo.get_by/3 raised "expected at most one result but got 2"
+      # and ToolRegistry.safe_execute swallowed it to "Tool execution failed".
+      assert {:ok, %{active: false}} = Developers.revoke_by_name("dup-name")
+      refute Repo.get!(DeveloperApiKey, dev1.id).active
+      refute Repo.get!(DeveloperApiKey, dev2.id).active
+    end
+
+    test "does not revoke keys of another org" do
+      {:ok, %{developer: dev}} = Developers.generate_key("org-iso-revoke", org: "other")
+      assert {:error, :not_found} = Developers.revoke_by_name("org-iso-revoke")
+      assert Repo.get!(DeveloperApiKey, dev.id).active
+    end
+
+    test "returns error for unknown developer_name" do
+      assert {:error, :not_found} = Developers.revoke_by_name("no-such-developer")
     end
   end
 

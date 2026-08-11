@@ -38,7 +38,7 @@ Workflow: [`.github/workflows/deploy.yml`](../../.github/workflows/deploy.yml)
 
 Path filters on `push` to `main`: `lib/`, `config/`, `priv/`, `assets/`, `mix.*`, `Dockerfile`, multitenant compose/Caddy, `scripts/deploy.sh`, `scripts/bootstrap-server.sh`, `scripts/infisical-compose.sh`, the workflow file.
 
-`workflow_dispatch` inputs: `environment`, `cutover` (default true), optional `image_tag`.
+`workflow_dispatch` inputs: `environment`, `cutover` (default true), optional `image_tag`, `skip_ci` (break-glass), `rollback` (default false — roll back to previous tag, no build).
 
 Do **not** default to laptop `ALLOW_DIRTY=1` / full `deploy.sh` when Actions can ship a clean SHA.
 
@@ -109,6 +109,8 @@ SERVER=ubuntu@HOST ACS_IMAGE_TAG=<tag> ./scripts/deploy.sh --resume
 SERVER=ubuntu@HOST ./scripts/deploy.sh --rollback
 ```
 
+Rolling back after a breaking bug is not a bare escape-hatch: load the `prod-rollback` skill, **ask the user first**, then roll back via GitHub Actions (`rollback: true` dispatch) or `CONFIRM=yes SERVER=ubuntu@HOST ./scripts/rollback.sh` (interactive prompt if `CONFIRM` is unset). Never run a rollback without explicit user approval.
+
 Replace dirty tags with a clean Actions deploy on `main` as soon as possible.
 
 | Setup | Compose | Notes |
@@ -158,4 +160,4 @@ Actions/`deploy.sh` already check container health + public `/mcp/health` (and f
 - **Prefer merge/push to `main` → GitHub Actions.** That is the production path.
 - Dirty laptop deploys (`ALLOW_DIRTY=1`) are emergency only; follow with a clean Actions build.
 - Never re-add a DCR prune GenServer; prevention is fixed client + ACS-owned `/oidc/register`.
-- Mid-cutover failure: Actions re-run with same tag, or `deploy.sh --resume` / `--rollback`.
+- Mid-cutover failure: Actions re-run with same tag, or `deploy.sh --resume`. For a breaking bug already live, follow the `prod-rollback` skill (ask the user first, then `rollback: true` dispatch or `rollback.sh`).

@@ -15,6 +15,7 @@ EXTRA_ORG_SLUGS="${EXTRA_ORG_SLUGS:-}"
 M2M_ID="${AUTH0_MGMT_CLIENT_ID:-${AUTH0_M2M_CLIENT_ID:-}}"
 M2M_SECRET="${AUTH0_MGMT_CLIENT_SECRET:-${AUTH0_M2M_CLIENT_SECRET:-}}"
 MGMT_AUDIENCE="https://${DOMAIN}/api/v2/"
+FIXED_DCR_ID="${OAUTH_FIXED_DCR_CLIENT_ID:-}"
 
 [[ -n "$M2M_ID" && -n "$M2M_SECRET" ]] || { echo "Set AUTH0_MGMT_CLIENT_ID/SECRET" >&2; exit 1; }
 [[ -f "$ORGS_FILE" ]] || { echo "Missing $ORGS_FILE" >&2; exit 1; }
@@ -31,7 +32,7 @@ MGMT_TOKEN=$(curl -sS --fail-with-body -X POST "https://${DOMAIN}/oauth/token" \
   -d "{\"client_id\":\"${M2M_ID}\",\"client_secret\":\"${M2M_SECRET}\",\"audience\":\"${MGMT_AUDIENCE}\",\"grant_type\":\"client_credentials\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
-while read -r AUDIENCE; do
+while read -r SLUG AUDIENCE; do
   echo "[auth0] ensuring API ${AUDIENCE}"
   MCP_API_ID=$(api GET /resource-servers | python3 -c "
 import sys, json
@@ -46,7 +47,7 @@ for rs in json.load(sys.stdin):
       \"name\": \"Steward ACS MCP (${AUDIENCE})\",
       \"identifier\": \"${AUDIENCE}\",
       \"signing_alg\": \"RS256\",
-      \"token_lifetime\": 86400,
+      \"token_lifetime\": 604800,
       \"scopes\": [{\"value\": \"mcp:tools\", \"description\": \"Call Steward ACS MCP tools\"}]
     }" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
     echo "  created id=${MCP_API_ID}"
@@ -100,6 +101,32 @@ for r in json.load(sys.stdin):
       echo "  ensured ${ROLE_NAME} has mcp:tools on audience"
     fi
   done
+
+  # The broker relays every connector through the fixed DCR Auth0 client, so
+  # Auth0 validates each org's broker callback against that client's allowlist.
+  # Without this, connectors pointed at this org host fail with "Callback URL
+  # mismatch" at /authorize. Additive merge — other callbacks are never removed.
+  if [[ -n "$FIXED_DCR_ID" ]]; then
+    CALLBACK="https://${SLUG}.${BASE_DOMAIN}/oauth/callback"
+    CURRENT=$(api GET "/clients/${FIXED_DCR_ID}?fields=callbacks&include_fields=true" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('callbacks') or []))")
+    MISSING=$(python3 -c "
+import json, sys
+have = set(json.loads(sys.argv[1]))
+print('yes' if sys.argv[2] in have else 'no')
+" "$CURRENT" "$CALLBACK")
+    if [[ "$MISSING" != "yes" ]]; then
+      DESIRED=$(python3 -c "
+import json, sys
+have = set(json.loads(sys.argv[1]))
+have.add(sys.argv[2])
+print(json.dumps(sorted(have)))
+" "$CURRENT" "$CALLBACK")
+      api PATCH "/clients/${FIXED_DCR_ID}" -d "{\"callbacks\": ${DESIRED}}" >/dev/null
+      echo "  added broker callback ${CALLBACK} to fixed DCR client ${FIXED_DCR_ID}"
+    else
+      echo "  broker callback ${CALLBACK} already allowlisted"
+    fi
+  fi
 done < <(python3 - "$ORGS_FILE" "$BASE_DOMAIN" "$EXTRA_ORG_SLUGS" <<'PY'
 import sys
 import yaml
@@ -115,7 +142,7 @@ for slug in slugs:
     if slug in seen:
         continue
     seen.add(slug)
-    print(f"https://{slug}.{base}/mcp/sse")
+    print(f"{slug} https://{slug}.{base}/mcp/sse")
 PY
 )
 

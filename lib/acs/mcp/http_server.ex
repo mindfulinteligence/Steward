@@ -471,6 +471,7 @@ defmodule Acs.MCP.HTTPServer do
 
     if is_binary(session_id) and session_id != "" and
          Acs.MCP.SSESessionManager.alive?(session_id) do
+      Acs.MCP.ClientSession.set_sticky(session_id, true)
       handle_mcp_message(conn, session_id)
     else
       handle_json_rpc_http(conn)
@@ -480,6 +481,7 @@ defmodule Acs.MCP.HTTPServer do
   defp handle_json_rpc_http(conn) do
     conn = fetch_query_params(conn)
     session_id = session_id_from_conn(conn) || generate_session_id()
+    Acs.MCP.ClientSession.set_sticky(session_id, is_binary(session_id_from_conn(conn)))
     seed_http_audience(conn, session_id)
 
     Logger.debug("MCP HTTP: received request on #{conn.request_path}")
@@ -565,6 +567,8 @@ defmodule Acs.MCP.HTTPServer do
           Acs.MCP.ClientSession.seed_mcp_connect(session_id, endpoint, :coding)
         end
     end
+
+    Acs.MCP.ClientSession.set_sticky(session_id, true)
 
     conn =
       conn

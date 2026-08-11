@@ -140,4 +140,26 @@ defmodule Acs.MCP.ClientSessionTest do
     assert name_beta =~ ~r/^somebody_else_/
     refute name_alpha == name_beta
   end
+
+  test "sticky sessions of the same identity get distinct qualified agent names" do
+    session_1 = "sess_qual_sticky1_#{System.unique_integer([:positive])}"
+    session_2 = "sess_qual_sticky2_#{System.unique_integer([:positive])}"
+
+    :ok = ClientSession.set_sticky(session_1, true)
+    :ok = ClientSession.set_sticky(session_2, true)
+
+    name_1 =
+      ClientSession.bind(session_1, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      end)
+
+    name_2 =
+      ClientSession.bind(session_2, fn ->
+        ClientSession.get_or_assign_qualified_agent_name("Nahar Emet")
+      end)
+
+    assert name_1 =~ ~r/^nahar_emet_/
+    assert name_2 =~ ~r/^nahar_emet_/
+    refute name_1 == name_2
+  end
 end

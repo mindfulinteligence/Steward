@@ -140,16 +140,25 @@ defmodule Acs.Developers do
 
   @doc """
   Revoke a developer's key by developer_name (public identifier, no DB id needed).
+
+  developer_name is not unique — a developer may have multiple keys — so all
+  matching active keys are revoked.
   """
   def revoke_by_name(developer_name, org \\ Acs.Org.current()) do
-    case Repo.get_by(DeveloperApiKey, developer_name: developer_name, org: org) do
-      nil ->
+    query =
+      from(d in DeveloperApiKey,
+        where: d.developer_name == ^developer_name and d.org == ^org and d.active == true
+      )
+
+    case Repo.all(query) do
+      [] ->
         {:error, :not_found}
 
-      dev ->
-        dev
-        |> Ecto.Changeset.change(%{active: false})
-        |> Repo.update()
+      devs ->
+        {_count, _} =
+          Repo.update_all(query, set: [active: false, updated_at: DateTime.utc_now()])
+
+        {:ok, %{List.first(devs) | active: false, updated_at: DateTime.utc_now()}}
     end
   end
 

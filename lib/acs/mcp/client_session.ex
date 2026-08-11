@@ -63,6 +63,18 @@ defmodule Acs.MCP.ClientSession do
   def get_or_assign_agent_name(_), do: nil
 
   @doc """
+  Mark a session as sticky so it keeps its own per-session agent name
+  instead of resolving to the identity key. Sticky sessions are stable
+  connections (SSE or an echoed `x-mcp-session-id`).
+  """
+  def set_sticky(key, sticky?) when is_binary(key) and is_boolean(sticky?) do
+    merge_put(key, %{sticky: sticky?})
+    :ok
+  end
+
+  def set_sticky(_key, _sticky?), do: :ok
+
+  @doc """
   Get or assign a pool-based agent name qualified with the human user's
   name (e.g. `nahar_alice`).
 
@@ -89,15 +101,19 @@ defmodule Acs.MCP.ClientSession do
         name
 
       _ ->
-        case qualified_agent_name(identity_key) do
-          name when is_binary(name) and name != "" ->
-            touch(identity_key)
-            name
+        if sticky_session?(session_key) do
+          get_or_assign_qualified_agent_name(prefix, session_key)
+        else
+          case qualified_agent_name(identity_key) do
+            name when is_binary(name) and name != "" ->
+              touch(identity_key)
+              name
 
-          _ ->
-            name = get_or_assign_qualified_agent_name(prefix, session_key || identity_key)
-            mirror_identity_name(identity_key, name)
-            name
+            _ ->
+              name = get_or_assign_qualified_agent_name(prefix, session_key || identity_key)
+              mirror_identity_name(identity_key, name)
+              name
+          end
         end
     end
   end
@@ -136,6 +152,15 @@ defmodule Acs.MCP.ClientSession do
     end
   end
 
+  defp sticky_session?(nil), do: false
+
+  defp sticky_session?(key) do
+    case fetch(key) do
+      {:ok, %{sticky: true}} -> true
+      _ -> false
+    end
+  end
+
   defp touch(nil), do: :ok
 
   defp touch(key) do
@@ -145,6 +170,18 @@ defmodule Acs.MCP.ClientSession do
       _ -> :ok
     end
   end
+
+  # Merge attrs into an existing session instead of replacing it wholesale, so
+  # metadata written by different stages (sticky flag, qualified agent name,
+  # audience, working repo) all survive across requests and initialize.
+  defp merge_put(key, attrs) when (is_binary(key) or is_tuple(key)) and is_map(attrs) do
+    case fetch(key) do
+      {:ok, data} when is_map(data) -> put(key, Map.merge(data, attrs))
+      _ -> put(key, attrs)
+    end
+  end
+
+  defp merge_put(_key, _attrs), do: :ok
 
   defp mirror_identity_name(nil, _name), do: :ok
 
@@ -231,7 +268,7 @@ defmodule Acs.MCP.ClientSession do
         endpoint -> Map.put(attrs, :mcp_endpoint, endpoint)
       end
 
-    put(session_id, attrs)
+    merge_put(session_id, attrs)
   end
 
   def seed_mcp_connect(_session_id, _endpoint_path, _), do: :ok
@@ -264,8 +301,8 @@ defmodule Acs.MCP.ClientSession do
   @doc "Bind the repository and workspace established by the first file lock."
   def set_working_repo(repo, workspace_id \\ nil, agent_identity \\ nil) do
     attrs = %{working_repo: Acs.Repos.normalize(repo), workspace_id: workspace_id}
-    put(current_id(), attrs)
-    put(agent_key(agent_identity), attrs)
+    merge_put(current_id(), attrs)
+    merge_put(agent_key(agent_identity), attrs)
     :ok
   end
 
@@ -299,8 +336,8 @@ defmodule Acs.MCP.ClientSession do
         _ -> attrs
       end
 
-    put(current_id(), attrs)
-    put(agent_key(agent_identity), attrs)
+    merge_put(current_id(), attrs)
+    merge_put(agent_key(agent_identity), attrs)
     audience
   end
 
