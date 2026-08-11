@@ -150,7 +150,7 @@ defmodule Acs.Observability.VmMetrics do
     {event, prev} = sample(state.prev)
     _ = enqueue(state.exporter, event)
 
-    for jump <- jump_events(state.prev.event, event, state.jump_config) do
+    for jump <- jump_events(Map.get(state.prev, :event), event, state.jump_config) do
       _ = enqueue(state.exporter, jump)
     end
 

@@ -133,4 +133,23 @@ defmodule Acs.Observability.VmMetricsTest do
     assert is_integer(event["memory_total_bytes"])
     assert Process.alive?(pid)
   end
+
+  test "poller survives the first tick (prev has no :event key yet)" do
+    test_pid = self()
+    enqueue = fn event -> send(test_pid, {:vm_metric, event}) end
+
+    {:ok, pid} =
+      start_supervised(
+        {VmMetrics,
+         name: :"vm_metrics_survive_test_#{System.unique_integer([:positive])}",
+         interval_ms: 20,
+         exporter: enqueue}
+      )
+
+    # The first tick after boot must not crash: init/1 builds prev
+    # without an :event key, so handle_info must read it defensively.
+    assert_receive {:vm_metric, _event}, 500
+    assert_receive {:vm_metric, _event}, 500
+    assert Process.alive?(pid)
+  end
 end
