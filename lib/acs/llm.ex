@@ -325,7 +325,7 @@ defmodule Acs.LLM do
         {:ok, %{content: content} = response} ->
           latency_ms = System.monotonic_time(:millisecond) - started
 
-          Logger.debug("[Acs.LLM] Provider #{provider_id} ok",
+          Logger.info("[Acs.LLM] Provider #{provider_id} ok",
             provider: provider_id,
             model: model,
             latency_ms: latency_ms,

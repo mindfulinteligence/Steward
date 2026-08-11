@@ -65,6 +65,18 @@ defmodule Acs.LLMTest do
     end
   end
 
+  describe "success telemetry reaches Axiom" do
+    test "successful provider calls log at info level with llm_call action" do
+      # Regression: success events were Logger.debug, which prod (:info) filters
+      # out, so the steward-acs-llm dashboard never saw any usage — only failures.
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert String.contains?(source, ~S|Logger.info("[Acs.LLM] Provider #{provider_id} ok"|)
+      assert String.contains?(source, ~s[action: "llm_call"])
+      assert String.contains?(source, ~s[status: "ok"])
+    end
+  end
+
   describe "call_type is the calling process" do
     test "auditors and intake pass process names, not subject ids" do
       # Regression: call_type must be memory_audit / skill_audit / … — never the
