@@ -39,4 +39,13 @@ defmodule Acs.MetaHarness.RecentOpsTest do
     assert length(result.error_clusters) == 1
     assert map_size(result.agent_behavior) == 1
   end
+
+  test "orgs/0 lists distinct org slugs recorded, defaulting missing orgs" do
+    RecentOps.record(%{tool_name: "ask", status: "success", latency_ms: 10, org: "anantha"})
+    RecentOps.record(%{tool_name: "ask", status: "success", latency_ms: 10, org: "anantha"})
+    RecentOps.record(%{tool_name: "ask", status: "success", latency_ms: 10, org: "default"})
+    RecentOps.record(%{tool_name: "ask", status: "success", latency_ms: 10})
+
+    assert Enum.sort(RecentOps.orgs()) == ["anantha", "default"]
+  end
 end

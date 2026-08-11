@@ -18,12 +18,13 @@ defmodule Acs.Observability.MetaAnalytics do
     cycle_id = cycle_id()
     meta = Map.get(analysis, :metadata) || %{}
     timeframe = to_string(Map.get(meta, :timeframe) || :last_24_hours)
+    org = Map.get(meta, :org)
 
-    ship_summary(analysis, cycle_id, timeframe)
-    ship_tools(analysis, cycle_id, timeframe)
-    ship_errors(analysis, cycle_id, timeframe)
-    ship_intake(analysis, cycle_id, timeframe)
-    ship_agents(analysis, cycle_id, timeframe)
+    ship_summary(analysis, cycle_id, timeframe, org)
+    ship_tools(analysis, cycle_id, timeframe, org)
+    ship_errors(analysis, cycle_id, timeframe, org)
+    ship_intake(analysis, cycle_id, timeframe, org)
+    ship_agents(analysis, cycle_id, timeframe, org)
     :ok
   rescue
     _ -> :ok
@@ -31,7 +32,7 @@ defmodule Acs.Observability.MetaAnalytics do
 
   def ship(_), do: :ok
 
-  defp ship_summary(analysis, cycle_id, timeframe) do
+  defp ship_summary(analysis, cycle_id, timeframe, org) do
     tools = Map.get(analysis, :tool_reliability) || %{}
     clusters = Map.get(analysis, :error_clusters) || []
     intake = Map.get(analysis, :intake_friction) || []
@@ -47,101 +48,116 @@ defmodule Acs.Observability.MetaAnalytics do
     success_rate = if exec > 0, do: success / exec, else: nil
     intake_gates = Enum.reduce(intake, 0, fn row, acc -> acc + (row.occurrence_count || 0) end)
 
-    enqueue(%{
-      "message" => "meta.summary",
-      "event" => "meta.summary",
-      "cycle_id" => cycle_id,
-      "timeframe" => timeframe,
-      "total_ops" => total,
-      "success_count" => success,
-      "failure_count" => failure,
-      "error_count" => error,
-      "discovery_count" => discovery,
-      "success_rate" => success_rate,
-      "tool_count" => map_size(tools),
-      "error_cluster_count" => length(clusters),
-      "intake_gate_count" => intake_gates,
-      "active_agents" => map_size(agents)
-    })
+    enqueue(
+      %{
+        "message" => "meta.summary",
+        "event" => "meta.summary",
+        "cycle_id" => cycle_id,
+        "timeframe" => timeframe,
+        "total_ops" => total,
+        "success_count" => success,
+        "failure_count" => failure,
+        "error_count" => error,
+        "discovery_count" => discovery,
+        "success_rate" => success_rate,
+        "tool_count" => map_size(tools),
+        "error_cluster_count" => length(clusters),
+        "intake_gate_count" => intake_gates,
+        "active_agents" => map_size(agents)
+      },
+      org
+    )
   end
 
-  defp ship_tools(analysis, cycle_id, timeframe) do
+  defp ship_tools(analysis, cycle_id, timeframe, org) do
     latency = Map.get(analysis, :latency_analysis) || %{}
 
     for {name, t} <- Map.get(analysis, :tool_reliability) || %{} do
       lat = Map.get(latency, name) || %{}
 
-      enqueue(%{
-        "message" => "meta.tool",
-        "event" => "meta.tool",
-        "cycle_id" => cycle_id,
-        "timeframe" => timeframe,
-        "tool_name" => name,
-        "total_calls" => t.total_calls,
-        "success_count" => t.success_count,
-        "failure_count" => t.failure_count,
-        "discovery_count" => t.discovery_count,
-        "success_rate" => t.success_rate,
-        "avg_latency_ms" => t.avg_latency,
-        "max_latency_ms" => t.max_latency,
-        "p50_latency_ms" => Map.get(lat, :p50_latency),
-        "p95_latency_ms" => Map.get(lat, :p95_latency)
-      })
+      enqueue(
+        %{
+          "message" => "meta.tool",
+          "event" => "meta.tool",
+          "cycle_id" => cycle_id,
+          "timeframe" => timeframe,
+          "tool_name" => name,
+          "total_calls" => t.total_calls,
+          "success_count" => t.success_count,
+          "failure_count" => t.failure_count,
+          "discovery_count" => t.discovery_count,
+          "success_rate" => t.success_rate,
+          "avg_latency_ms" => t.avg_latency,
+          "max_latency_ms" => t.max_latency,
+          "p50_latency_ms" => Map.get(lat, :p50_latency),
+          "p95_latency_ms" => Map.get(lat, :p95_latency)
+        },
+        org
+      )
     end
   end
 
-  defp ship_errors(analysis, cycle_id, timeframe) do
+  defp ship_errors(analysis, cycle_id, timeframe, org) do
     for c <- Map.get(analysis, :error_clusters) || [] do
-      enqueue(%{
-        "message" => "meta.error_cluster",
-        "event" => "meta.error_cluster",
-        "cycle_id" => cycle_id,
-        "timeframe" => timeframe,
-        "tool_name" => c.tool_name,
-        "error_type" => c.error_type,
-        "occurrence_count" => c.occurrence_count,
-        "sample_message" => c.sample_message,
-        "agents" => truncate(c.agents, 200)
-      })
+      enqueue(
+        %{
+          "message" => "meta.error_cluster",
+          "event" => "meta.error_cluster",
+          "cycle_id" => cycle_id,
+          "timeframe" => timeframe,
+          "tool_name" => c.tool_name,
+          "error_type" => c.error_type,
+          "occurrence_count" => c.occurrence_count,
+          "sample_message" => c.sample_message,
+          "agents" => truncate(c.agents, 200)
+        },
+        org
+      )
     end
   end
 
-  defp ship_intake(analysis, cycle_id, timeframe) do
+  defp ship_intake(analysis, cycle_id, timeframe, org) do
     for row <- Map.get(analysis, :intake_friction) || [] do
-      enqueue(%{
-        "message" => "meta.intake",
-        "event" => "meta.intake",
-        "cycle_id" => cycle_id,
-        "timeframe" => timeframe,
-        "tool_name" => row.tool_name,
-        "error_type" => row.error_type,
-        "occurrence_count" => row.occurrence_count,
-        "sample_message" => row.sample_message,
-        "prompt_hint" => row.prompt_hint
-      })
+      enqueue(
+        %{
+          "message" => "meta.intake",
+          "event" => "meta.intake",
+          "cycle_id" => cycle_id,
+          "timeframe" => timeframe,
+          "tool_name" => row.tool_name,
+          "error_type" => row.error_type,
+          "occurrence_count" => row.occurrence_count,
+          "sample_message" => row.sample_message,
+          "prompt_hint" => row.prompt_hint
+        },
+        org
+      )
     end
   end
 
-  defp ship_agents(analysis, cycle_id, timeframe) do
+  defp ship_agents(analysis, cycle_id, timeframe, org) do
     for {agent_id, a} <- Map.get(analysis, :agent_behavior) || %{} do
-      enqueue(%{
-        "message" => "meta.agent",
-        "event" => "meta.agent",
-        "cycle_id" => cycle_id,
-        "timeframe" => timeframe,
-        "agent_id" => agent_id,
-        "total_operations" => a.total_operations,
-        "success_count" => a.success_count,
-        "failure_count" => a.failure_count,
-        "discovery_count" => a.discovery_count,
-        "unique_tools" => a.unique_tools_used,
-        "success_rate" => a.success_rate,
-        "avg_latency_ms" => a.avg_latency
-      })
+      enqueue(
+        %{
+          "message" => "meta.agent",
+          "event" => "meta.agent",
+          "cycle_id" => cycle_id,
+          "timeframe" => timeframe,
+          "agent_id" => agent_id,
+          "total_operations" => a.total_operations,
+          "success_count" => a.success_count,
+          "failure_count" => a.failure_count,
+          "discovery_count" => a.discovery_count,
+          "unique_tools" => a.unique_tools_used,
+          "success_rate" => a.success_rate,
+          "avg_latency_ms" => a.avg_latency
+        },
+        org
+      )
     end
   end
 
-  defp enqueue(fields) do
+  defp enqueue(fields, org) do
     event =
       Map.merge(
         %{
@@ -149,7 +165,8 @@ defmodule Acs.Observability.MetaAnalytics do
           "severity" => "INFO",
           "level" => "info",
           "service" => "steward_acs",
-          "module" => "Acs.Observability.MetaAnalytics"
+          "module" => "Acs.Observability.MetaAnalytics",
+          "org" => org
         },
         fields
       )

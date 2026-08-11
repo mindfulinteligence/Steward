@@ -53,6 +53,21 @@ defmodule Acs.MetaHarness.RecentOps do
   def record(_), do: :ok
 
   @doc """
+  Distinct org slugs present in the table. Lets the generator discover which
+  orgs actually have recorded ops (e.g. a request-scoped auth org such as
+  "anantha" that differs from the configured `ACS_ORG_NAME`).
+  """
+  def orgs do
+    setup()
+
+    :ets.tab2list(@table)
+    |> Enum.map(fn {_, e} -> Map.get(e, :org, "default") end)
+    |> Enum.uniq()
+  rescue
+    _ -> []
+  end
+
+  @doc """
   Aggregate ops in `[start_ms, end_ms]` into Analyzer-shaped maps.
 
   Returns `%{tool_reliability: %{}, latency_analysis: %{}, error_clusters: [],

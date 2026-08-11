@@ -61,5 +61,27 @@ defmodule Acs.MetaHarness.GeneratorTest do
       result = Generator.generate()
       refute Map.get(result, :skipped) == true
     end
+
+    test "analyzes ops recorded under a non-configured org (RecentOps discovery)" do
+      RecentOps.record(%{
+        tool_name: "ask",
+        status: "success",
+        latency_ms: 10,
+        error_type: nil,
+        error_message: nil,
+        agent_id: "email|x",
+        org: "anantha"
+      })
+
+      # Scheduler has no request context, so Acs.Org.current() is the configured
+      # org; the generator must discover and analyze the org that has the data.
+      result = Generator.generate()
+
+      if result.report == "error" do
+        flunk("generate/0 errored: #{inspect(result.error)}")
+      else
+        assert result.operations >= 1
+      end
+    end
   end
 end

@@ -64,12 +64,14 @@ defmodule Acs.MetaHarness.Generator do
 
   defp do_generate do
     try do
-      analysis =
-        Acs.MetaHarness.Analyzer.analyze(timeframe: :last_24_hours, org: Acs.Org.current())
+      analyses = analyze_all_orgs()
 
       # Prod: ship rollups to steward_meta_analytics (same dataset as agent.tool).
-      Acs.Observability.MetaAnalytics.ship(analysis)
+      for {_org, analysis} <- analyses do
+        Acs.Observability.MetaAnalytics.ship(analysis)
+      end
 
+      analysis = pick_primary(analyses)
       data = gather_all_data(analysis)
       baseline = read_baseline()
       report = build_report(data, baseline)
@@ -93,6 +95,34 @@ defmodule Acs.MetaHarness.Generator do
         Logger.error("[Generator] Stacktrace: #{inspect(stacktrace)}")
         %{report: "error", plan: "error", error: inspect(e)}
     end
+  end
+
+  # The scheduler GenServer has no request context, so Acs.Org.current() resolves
+  # to the configured ACS_ORG_NAME while OperationLogger records ops under the
+  # request-scoped auth org. Analyze per-org (configured + any org with data in
+  # the ETS fallback) so no org's ops are silently dropped from the rollup.
+  defp analyze_all_orgs do
+    orgs = analysis_orgs()
+
+    for org <- orgs do
+      {org, Acs.MetaHarness.Analyzer.analyze(timeframe: :last_24_hours, org: org)}
+    end
+  end
+
+  defp analysis_orgs do
+    Enum.uniq([Acs.Org.current() | Acs.Org.all() ++ Acs.MetaHarness.RecentOps.orgs()])
+  end
+
+  # Filesystem report/plan reflect the org with the most tool data; fall back to
+  # the configured org when nothing has data yet.
+  defp pick_primary(analyses) do
+    analyses
+    |> Enum.max_by(fn {_org, analysis} ->
+      analysis.tool_reliability |> Map.keys() |> length()
+    end)
+    |> elem(1)
+  rescue
+    _ -> Acs.MetaHarness.Analyzer.analyze(timeframe: :last_24_hours, org: Acs.Org.current())
   end
 
   # ── Data Gathering ───────────────────────────────────────────────────────────
