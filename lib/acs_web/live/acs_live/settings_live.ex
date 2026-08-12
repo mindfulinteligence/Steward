@@ -212,18 +212,15 @@ defmodule AcsWeb.AcsLive.SettingsLive do
 
           <.form for={@key_form} id="mint-key-form" phx-submit="mint-developer-key">
             <label for="key-name" class="form-label">Name on the key</label>
-            <div style="display: flex; gap: 8px; align-items: center; margin-top: 6px;">
-              <input
-                id="key-name"
-                type="text"
-                name={@key_form[:name].name}
-                value={@key_form[:name].value}
-                class="form-input"
-                placeholder="e.g. Nahar"
-                style="flex: 1;"
-              />
-              <button type="submit" class="btn btn-copy">Generate key</button>
-            </div>
+            <input
+              id="key-name"
+              type="text"
+              name={@key_form[:name].name}
+              value={@key_form[:name].value}
+              class="form-input"
+              placeholder="e.g. Nahar"
+              style="width: 100%; margin-top: 6px;"
+            />
 
             <div style="display: flex; gap: 16px; margin-top: 12px;">
               <label style="display: flex; gap: 6px; align-items: center; font-size: 0.8rem;">
@@ -245,6 +242,8 @@ defmodule AcsWeb.AcsLive.SettingsLive do
                 Chat
               </label>
             </div>
+
+            <button type="submit" class="btn btn-copy" style="margin-top: 12px;">Generate key</button>
           </.form>
 
           <%= if @minted_key do %>
