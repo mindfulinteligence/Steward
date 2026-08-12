@@ -4,6 +4,7 @@ defmodule Acs.Acs.Cache do
   """
 
   require Logger
+  alias Acs.Observability.CacheOps
   alias Acs.Repo
   import Ecto.Query, only: [from: 2]
 
@@ -247,8 +248,13 @@ defmodule Acs.Acs.Cache do
     key = {org, task_id}
 
     case :ets.lookup(@tasks_table, key) do
-      [{^key, task}] -> {:ok, task}
-      [] -> {:ok, nil}
+      [{^key, task}] ->
+        CacheOps.log(cache_name: @tasks_table, result: "hit", org: org)
+        {:ok, task}
+
+      [] ->
+        CacheOps.log(cache_name: @tasks_table, result: "miss", org: org)
+        {:ok, nil}
     end
   end
 
@@ -285,8 +291,13 @@ defmodule Acs.Acs.Cache do
     key = {org, file_path}
 
     case :ets.lookup(@file_locks_table, key) do
-      [{^key, lock}] -> {:ok, lock}
-      [] -> {:ok, nil}
+      [{^key, lock}] ->
+        CacheOps.log(cache_name: @file_locks_table, result: "hit", org: org)
+        {:ok, lock}
+
+      [] ->
+        CacheOps.log(cache_name: @file_locks_table, result: "miss", org: org)
+        {:ok, nil}
     end
   end
 
@@ -328,8 +339,13 @@ defmodule Acs.Acs.Cache do
     key = {org, agent_id}
 
     case :ets.lookup(@agent_status_table, key) do
-      [{^key, status}] -> {:ok, status}
-      [] -> {:ok, nil}
+      [{^key, status}] ->
+        CacheOps.log(cache_name: @agent_status_table, result: "hit", org: org)
+        {:ok, status}
+
+      [] ->
+        CacheOps.log(cache_name: @agent_status_table, result: "miss", org: org)
+        {:ok, nil}
     end
   end
 
@@ -364,6 +380,8 @@ defmodule Acs.Acs.Cache do
 
     case :ets.lookup(@agent_status_table, key) do
       [{^key, status}] ->
+        CacheOps.log(cache_name: @agent_status_table, result: "hit", org: org)
+
         :ets.insert(
           @agent_status_table,
           {key, Map.put(status, :updated_at, DateTime.utc_now())}
@@ -372,6 +390,7 @@ defmodule Acs.Acs.Cache do
         :ok
 
       [] ->
+        CacheOps.log(cache_name: @agent_status_table, result: "miss", org: org)
         {:ok, nil}
     end
   end

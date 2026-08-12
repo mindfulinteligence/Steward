@@ -94,4 +94,82 @@ defmodule Acs.LLMTest do
       refute source =~ "try_providers(spec_id,"
     end
   end
+
+  describe "provider routing via Acs.LLM.Router" do
+    test "enabled providers are resolved per call_type through the router" do
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert source =~ "get_enabled_providers(\"intake\")"
+      assert source =~ "get_enabled_providers(\"skill_intake\")"
+      assert source =~ "get_enabled_providers(\"memory_audit\")"
+      assert source =~ "get_enabled_providers(\"skill_audit\")"
+      assert source =~ "get_enabled_providers(\"spec_audit\")"
+      assert source =~ "Acs.LLM.Router.priority_for(Acs.LLM.Router.region(), call_type)"
+      assert source =~ "Acs.LLM.Router.model_for("
+    end
+
+    test "defines an app-side OpenRouter provider resolved via config_for/1" do
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert source =~ "config = config_for(provider_id)"
+      assert source =~ "LLMUtils.Client.chat_completion(messages, config, opts)"
+      assert source =~ ~s|"openrouter" => %{|
+      assert source =~ "base_url: \"https://openrouter.ai/api/v1\""
+      assert source =~ "default_model: \"deepseek/deepseek-4-flash\""
+      assert source =~ "OPENROUTER_API_KEY"
+
+      assert source =~
+               "Map.get(@app_provider_configs, provider_id) || LLMUtils.Providers.get(provider_id)"
+    end
+
+    test "get_enabled_providers includes openrouter when routed and keyed" do
+      old_priority = System.get_env("LLM_PRIORITY_INTAKE")
+      old_key = Application.get_env(:steward_acs, :openrouter_api_key)
+      old_whitelist = Application.get_env(:steward_acs, :enabled_llm_providers)
+
+      on_exit(fn ->
+        restore_env("LLM_PRIORITY_INTAKE", old_priority)
+        if old_key, do: Application.put_env(:steward_acs, :openrouter_api_key, old_key)
+        Application.put_env(:steward_acs, :enabled_llm_providers, old_whitelist)
+      end)
+
+      System.put_env("LLM_PRIORITY_INTAKE", "openrouter")
+      Application.put_env(:steward_acs, :openrouter_api_key, "test-key")
+      Application.put_env(:steward_acs, :enabled_llm_providers, [])
+
+      providers = Acs.LLM.get_enabled_providers_for_test("intake")
+      assert "openrouter" in providers
+    end
+  end
+
+  defp restore_env(var, nil), do: System.delete_env(var)
+  defp restore_env(var, val), do: System.put_env(var, val)
+
+  describe "provider fallback telemetry" do
+    test "emits a per-fallback info event with llm_fallback action" do
+      # Regression: a provider failure followed by a success on the next provider
+      # was only visible as the failed provider's warning — no signal that the
+      # request itself succeeded. The fallback event lets Axiom count recoveries.
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert String.contains?(
+               source,
+               ~S|Logger.info("[Acs.LLM] Provider #{provider_id} failed, falling back to #{hd(rest)}"|
+             )
+
+      assert String.contains?(source, ~s[action: "llm_fallback"])
+      assert String.contains?(source, "next_provider: hd(rest)")
+    end
+
+    test "emits a single all_providers_failed warning when every provider errors" do
+      # Regression: with N providers the old code logged N error events, which
+      # inflated the error rate; the aggregate is the true failure signal.
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert String.contains?(source, ~s[error_type: "all_providers_failed"])
+      assert String.contains?(source, ~s[action: "llm_call"])
+      assert String.contains?(source, "providers: providers")
+      assert String.contains?(source, "count: length(providers)")
+    end
+  end
 end

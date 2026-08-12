@@ -1,6 +1,8 @@
 defmodule Acs.MCP.HealthCache do
   @moduledoc false
 
+  alias Acs.Observability.CacheOps
+
   @table :tools_health_cache
   @ttl_seconds 30
 
@@ -12,14 +14,23 @@ defmodule Acs.MCP.HealthCache do
   def get_all do
     cutoff = cutoff()
 
-    :ets.foldl(
-      fn
-        {app, status, ts}, acc when ts > cutoff -> Map.put(acc, app, status)
-        _, acc -> acc
-      end,
-      %{},
-      @table
+    result =
+      :ets.foldl(
+        fn
+          {app, status, ts}, acc when ts > cutoff -> Map.put(acc, app, status)
+          _, acc -> acc
+        end,
+        %{},
+        @table
+      )
+
+    CacheOps.log(
+      cache_name: @table,
+      result: if(map_size(result) > 0, do: "hit", else: "miss"),
+      count: map_size(result)
     )
+
+    result
   end
 
   def put_all(results) when is_map(results) do

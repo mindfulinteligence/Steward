@@ -11,8 +11,7 @@ defmodule Acs.LLM do
 
   alias LLMUtils.ResponseParser
 
-  # Provider priority order for evaluations (mimo preferred; nim/minimax optional fallbacks)
-  @provider_priority ["mimo", "nim", "minimax", "openai"]
+  # Provider priority order is resolved per (region, call_type) by Acs.LLM.Router.
 
   @doc """
   Evaluates a proposed memory entry for quality, noise, and contradictions.
@@ -96,7 +95,7 @@ defmodule Acs.LLM do
   @spec intake_classify(map()) :: {:ok, map()} | {:error, term()}
   def intake_classify(candidate) when is_map(candidate) do
     prompt = build_intake_prompt(candidate)
-    providers = get_enabled_providers()
+    providers = get_enabled_providers("intake")
 
     if providers == [] do
       {:error, :no_providers_enabled}
@@ -117,7 +116,7 @@ defmodule Acs.LLM do
   @spec skill_intake_classify(map()) :: {:ok, map()} | {:error, term()}
   def skill_intake_classify(candidate) when is_map(candidate) do
     prompt = build_skill_intake_prompt(candidate)
-    providers = get_enabled_providers()
+    providers = get_enabled_providers("skill_intake")
 
     if providers == [] do
       {:error, :no_providers_enabled}
@@ -173,7 +172,7 @@ defmodule Acs.LLM do
     # narrower ABAC visibility than the proposed memory and are untrusted prompt input.
     prompt = build_evaluation_prompt(memory, [])
 
-    providers = get_enabled_providers()
+    providers = get_enabled_providers("memory_audit")
 
     if providers == [] do
       {:error, :no_providers_enabled}
@@ -186,7 +185,7 @@ defmodule Acs.LLM do
   defp do_evaluate_skill(skill_name, skill) do
     context = Acs.Skills.Store.context_for_audit(skill.name)
     prompt = build_skill_evaluation_prompt(skill, context)
-    providers = get_enabled_providers()
+    providers = get_enabled_providers("skill_audit")
 
     if providers == [] do
       {:error, :no_providers_enabled}
@@ -237,7 +236,7 @@ defmodule Acs.LLM do
   defp do_evaluate_spec(spec_id, entry) do
     # Do not send other entries as prompt context (same harden as memory audit).
     prompt = build_spec_evaluation_prompt(entry, [])
-    providers = get_enabled_providers()
+    providers = get_enabled_providers("spec_audit")
 
     if providers == [] do
       {:error, :no_providers_enabled}
@@ -255,7 +254,22 @@ defmodule Acs.LLM do
     try_providers(call_type, providers, prompt, subject_id, [], byte_size(prompt))
   end
 
-  defp try_providers(_call_type, [], _prompt, _subject_id, errors, _prompt_chars) do
+  defp try_providers(call_type, [], _prompt, subject_id, errors, _prompt_chars) do
+    providers = errors |> Enum.map(fn {provider, _reason} -> provider end) |> Enum.reverse()
+
+    Logger.warning(
+      "[Acs.LLM] All providers failed: #{Enum.join(providers, ", ")}",
+      llm_event: "chat",
+      status: "error",
+      action: "llm_call",
+      error_type: "all_providers_failed",
+      call_type: call_type,
+      subject_id: subject_id,
+      audience: "system",
+      providers: providers,
+      count: length(providers)
+    )
+
     {:error, {:all_providers_failed, errors |> Enum.reverse() |> Enum.take(3)}}
   end
 
@@ -274,6 +288,20 @@ defmodule Acs.LLM do
 
       {:error, reason} ->
         # call_provider already logged the failure with model/latency — don't double-count.
+        if rest != [] do
+          Logger.info("[Acs.LLM] Provider #{provider_id} failed, falling back to #{hd(rest)}",
+            provider: provider_id,
+            next_provider: hd(rest),
+            llm_event: "chat",
+            status: "error",
+            action: "llm_fallback",
+            error_type: normalize_error_type(reason),
+            call_type: call_type,
+            subject_id: subject_id,
+            audience: "system"
+          )
+        end
+
         try_providers(
           call_type,
           rest,
@@ -289,7 +317,7 @@ defmodule Acs.LLM do
   # Uses LLMUtils.Client with options for metrics, rate limiting, logging.
 
   defp call_provider(provider_id, prompt, call_type, prompt_chars, subject_id) do
-    config = LLMUtils.Providers.get(provider_id)
+    config = config_for(provider_id)
 
     if is_nil(config) do
       {:error, :unknown_provider}
@@ -299,8 +327,12 @@ defmodule Acs.LLM do
       messages = [%{role: "user", content: prompt}]
 
       model =
-        provider_overrides(provider_id, :model) ||
-          config.default_model
+        Acs.LLM.Router.model_for(
+          Acs.LLM.Router.region(),
+          provider_id,
+          call_type,
+          provider_overrides(provider_id, :model) || config.default_model
+        )
 
       base_url =
         provider_overrides(provider_id, :base_url)
@@ -321,7 +353,7 @@ defmodule Acs.LLM do
 
       started = System.monotonic_time(:millisecond)
 
-      case LLMUtils.Client.chat_completion(messages, provider_id, opts) do
+      case LLMUtils.Client.chat_completion(messages, config, opts) do
         {:ok, %{content: content} = response} ->
           latency_ms = System.monotonic_time(:millisecond) - started
 
@@ -447,7 +479,41 @@ defmodule Acs.LLM do
   defp provider_overrides("openai", :model),
     do: System.get_env("OPENAI_MODEL") || Application.get_env(:steward_acs, :openai_model)
 
+  defp provider_overrides("openrouter", :base_url),
+    do:
+      System.get_env("OPENROUTER_BASE_URL") ||
+        Application.get_env(:steward_acs, :openrouter_base_url)
+
+  defp provider_overrides("openrouter", :model),
+    do: System.get_env("OPENROUTER_MODEL") || Application.get_env(:steward_acs, :openrouter_model)
+
   defp provider_overrides(_, _), do: nil
+
+  # ── App-side provider configs ────────────────────────────────────────
+  # Providers not present in the LLMUtils registry (e.g. OpenRouter) are
+  # defined here and merged ahead of the registry lookup. `config_for/1`
+  # is the single config resolution point used by call_provider.
+
+  @app_provider_configs %{
+    "openrouter" => %{
+      id: "openrouter",
+      name: "OpenRouter",
+      base_url: "https://openrouter.ai/api/v1",
+      default_model: "deepseek/deepseek-4-flash",
+      auth_type: :bearer,
+      api_key_env: "OPENROUTER_API_KEY",
+      supports_json_mode: true,
+      supports_system_role: true,
+      rate_limit: nil,
+      rate_window_ms: 60_000,
+      models: ["deepseek/deepseek-4-flash"],
+      suppress_thinking: true
+    }
+  }
+
+  defp config_for(provider_id) do
+    Map.get(@app_provider_configs, provider_id) || LLMUtils.Providers.get(provider_id)
+  end
 
   # ── API key resolution ───────────────────────────────────────────────
   # Checks Application config first (set in runtime.exs), then system env.
@@ -507,11 +573,14 @@ defmodule Acs.LLM do
   # ── Provider filtering ──────────────────────────────────────────────
   # Checks which providers are enabled (whitelist) and have valid API keys.
 
-  defp get_enabled_providers do
-    @provider_priority
+  defp get_enabled_providers(call_type) do
+    Acs.LLM.Router.priority_for(Acs.LLM.Router.region(), call_type)
     |> Enum.filter(&provider_enabled?/1)
     |> Enum.filter(&has_valid_api_key?/1)
   end
+
+  @doc false
+  def get_enabled_providers_for_test(call_type), do: get_enabled_providers(call_type)
 
   defp provider_enabled?(provider_id) do
     enabled = Application.get_env(:steward_acs, :enabled_llm_providers, [])

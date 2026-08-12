@@ -56,6 +56,15 @@ services:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
       OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
+      OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-}"
+      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-}"
+
+      # Per-location, per-call-type LLM routing (see Acs.LLM.Router).
+      ACS_REGION: "${ACS_REGION:-default}"
+      LLM_PRIORITY_INTAKE: "${LLM_PRIORITY_INTAKE:-}"
+      LLM_PRIORITY_SKILL_INTAKE: "${LLM_PRIORITY_SKILL_INTAKE:-}"
+      LLM_MODEL_INTAKE: "${LLM_MODEL_INTAKE:-}"
     volumes:
       # Uncomment to mount Obsidian vault:
       # - /path/to/your/vault:/obsidian:ro

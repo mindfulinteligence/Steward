@@ -2,6 +2,7 @@ defmodule Acs.MCP.OAuth.JWKS do
   @moduledoc false
 
   alias Acs.MCP.OAuth.Config
+  alias Acs.Observability.CacheOps
 
   @cache_key {:acs_mcp_jwks, :keys}
   @cache_ttl_ms 3_600_000
@@ -120,12 +121,15 @@ defmodule Acs.MCP.OAuth.JWKS do
     case :persistent_term.get(@cache_key, :missing) do
       {keys, fetched_at} when is_map(keys) ->
         if System.monotonic_time(:millisecond) - fetched_at < @cache_ttl_ms do
+          CacheOps.log(cache_name: "jwks", result: "hit")
           keys
         else
+          CacheOps.log(cache_name: "jwks", result: "expired")
           refresh_keys()
         end
 
       :missing ->
+        CacheOps.log(cache_name: "jwks", result: "miss")
         refresh_keys()
     end
   end

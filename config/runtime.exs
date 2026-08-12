@@ -279,8 +279,12 @@ config :steward_acs, :nim_api_key, System.get_env("NIM_API_KEY", "")
 config :steward_acs, :mimo_api_key, System.get_env("MIMO_API_KEY", "")
 config :steward_acs, :minimax_api_key, System.get_env("MINIMAX_API_KEY", "")
 config :steward_acs, :openai_api_key, System.get_env("OPENAI_API_KEY", "")
+config :steward_acs, :openrouter_api_key, System.get_env("OPENROUTER_API_KEY", "")
+config :steward_acs, :acs_region, System.get_env("ACS_REGION", "default")
 config :steward_acs, :openai_base_url, System.get_env("OPENAI_BASE_URL", "")
 config :steward_acs, :openai_model, System.get_env("OPENAI_MODEL", "")
+config :steward_acs, :openrouter_base_url, System.get_env("OPENROUTER_BASE_URL", "")
+config :steward_acs, :openrouter_model, System.get_env("OPENROUTER_MODEL", "")
 
 config :steward_acs,
        :enabled_llm_providers,

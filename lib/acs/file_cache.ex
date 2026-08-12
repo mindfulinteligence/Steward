@@ -21,6 +21,8 @@ defmodule Acs.FileCache do
   @ttl_seconds 10
   @tables [:skills_cache, :specs_cache]
 
+  alias Acs.Observability.CacheOps
+
   def setup do
     for table <- @tables do
       if :ets.whereis(table) == :undefined do
@@ -33,13 +35,19 @@ defmodule Acs.FileCache do
 
   def get(table, org, type) do
     if :ets.whereis(table) == :undefined do
+      CacheOps.log(cache_name: table, result: "miss", type: type, org: org)
       :miss
     else
       cutoff = cutoff()
 
       case :ets.lookup(table, {org, type}) do
-        [{_key, value, ts}] when ts > cutoff -> {:ok, value}
-        _ -> :miss
+        [{_key, value, ts}] when ts > cutoff ->
+          CacheOps.log(cache_name: table, result: "hit", type: type, org: org)
+          {:ok, value}
+
+        _ ->
+          CacheOps.log(cache_name: table, result: "miss", type: type, org: org)
+          :miss
       end
     end
   end

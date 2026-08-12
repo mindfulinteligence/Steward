@@ -31,6 +31,11 @@
       "id": "7f2a1c90-a1b2-4a01-8b01-555555555555",
       "title": "Errors",
       "defaultCollapsed": false
+    },
+    {
+      "id": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "title": "Cache & fallbacks",
+      "defaultCollapsed": false
     }
   ],
   "charts": [
@@ -259,6 +264,63 @@
       "query": {
         "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"llm_call\" and ['status'] == \"error\"\n| project _time, error_type, provider, model, call_type, audience, latency_ms, message\n| order by _time desc\n| limit 40"
       }
+    },
+    {
+      "id": "cache_access_count",
+      "type": "Statistic",
+      "name": "Cache accesses",
+      "colorScheme": "Blue",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"cache_access\"\n| count"
+      }
+    },
+    {
+      "id": "cache_hit_rate",
+      "type": "Statistic",
+      "name": "Cache hit rate",
+      "colorScheme": "Green",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"cache_access\" and ['cache_result'] in (\"hit\", \"miss\")\n| summarize hit=countif(['cache_result'] == \"hit\"), n=count()\n| extend rate = iff(n == 0, 0.0, 100.0 * hit / n)\n| project rate"
+      }
+    },
+    {
+      "id": "llm_fallbacks_count",
+      "type": "Statistic",
+      "name": "Provider fallbacks",
+      "colorScheme": "Orange",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"llm_fallback\"\n| count"
+      }
+    },
+    {
+      "id": "cache_access_over_time",
+      "type": "TimeSeries",
+      "name": "Cache hits / misses over time",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"cache_access\"\n| summarize c=count() by bin(_time, 15m), cache_result"
+      }
+    },
+    {
+      "id": "cache_by_name",
+      "type": "Table",
+      "name": "Cache hit/miss by cache",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"cache_access\"\n| summarize hits=countif(['cache_result'] == \"hit\"), misses=countif(['cache_result'] == \"miss\"), expired=countif(['cache_result'] == \"expired\"), total=count() by cache_name, cache_type\n| order by total desc\n| limit 20"
+      }
+    },
+    {
+      "id": "llm_fallback_breakdown",
+      "type": "Table",
+      "name": "Fallback breakdown",
+      "sectionId": "7f2a1c90-a1b2-4a01-8b01-666666666666",
+      "query": {
+        "apl": "['__LOGS_DATASET__']\n| where ['action'] == \"llm_fallback\"\n| summarize n=count() by provider, next_provider, error_type, call_type\n| order by n desc\n| limit 25"
+      }
     }
   ],
   "layout": [
@@ -285,6 +347,12 @@
     {"i": "llm_provider_mix", "x": 0, "y": 25, "w": 12, "h": 4},
     {"i": "llm_errors_by_type", "x": 0, "y": 29, "w": 12, "h": 3},
     {"i": "llm_error_table", "x": 0, "y": 32, "w": 6, "h": 4},
-    {"i": "llm_recent_errors", "x": 6, "y": 32, "w": 6, "h": 4}
+    {"i": "llm_recent_errors", "x": 6, "y": 32, "w": 6, "h": 4},
+    {"i": "cache_access_count", "x": 0, "y": 36, "w": 2, "h": 2},
+    {"i": "cache_hit_rate", "x": 2, "y": 36, "w": 2, "h": 2},
+    {"i": "llm_fallbacks_count", "x": 4, "y": 36, "w": 2, "h": 2},
+    {"i": "cache_access_over_time", "x": 6, "y": 36, "w": 6, "h": 3},
+    {"i": "cache_by_name", "x": 0, "y": 39, "w": 6, "h": 4},
+    {"i": "llm_fallback_breakdown", "x": 6, "y": 39, "w": 6, "h": 4}
   ]
 }

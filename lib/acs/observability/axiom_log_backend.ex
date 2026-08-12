@@ -53,6 +53,11 @@ defmodule Acs.Observability.AxiomLogBackend do
     :page,
     :service,
     :count,
+    :cache_name,
+    :cache_result,
+    :cache_type,
+    :next_provider,
+    :providers,
     :trace_id,
     :span_id,
     :trace_flags

@@ -89,7 +89,12 @@ config :logger, :console,
     :prompt_chars,
     :recommendation,
     :quality_score,
-    :error
+    :error,
+    :next_provider,
+    :providers,
+    :cache_name,
+    :cache_result,
+    :cache_type
   ]
 
 # Configure esbuild
