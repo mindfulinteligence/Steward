@@ -140,8 +140,11 @@ services:
       - "11434"
     volumes:
       - ollama_data:/root/.ollama
+    # Health = serve is up AND the embedding model is present. Without the
+    # model grep this stays "healthy" while every embed call 404s. If the model
+    # is missing, scripts/ensure-ollama-model.sh (cron + @reboot) pulls it.
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD-SHELL", "ollama list | grep -q nomic-embed-text"]
       interval: 30s
       timeout: 10s
       retries: 3

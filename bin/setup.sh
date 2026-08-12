@@ -137,7 +137,7 @@ if [ "$OLLAMA" = "y" ]; then
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
-      test: ["CMD", "ollama", "list"]
+      test: ["CMD-SHELL", "ollama list | grep -q nomic-embed-text"]
       interval: 30s
       timeout: 10s
       retries: 5
