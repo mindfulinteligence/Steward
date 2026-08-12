@@ -1,11 +1,11 @@
 defmodule Acs.Artifacts.Ledger do
   import Ecto.Query
 
-  alias Acs.Artifacts.{Commit, CompanyArtifact, Revision, Skill, Spec, TenantTool}
+  alias Acs.Artifacts.{Commit, CompanyArtifact, Prompt, Revision, Skill, Spec, TenantTool}
   alias Acs.Orgs.Organization
   alias Acs.Repo
 
-  @kinds ~w(skill spec tool)
+  @kinds ~w(skill spec tool prompt)
   @operations ~w(create revise transition restore tombstone import)
 
   @doc "Append an artifact snapshot and rebuild its current-kind projection."
@@ -352,6 +352,20 @@ defmodule Acs.Artifacts.Ledger do
     end
   end
 
+  defp projection_attrs("prompt", public_id, snapshot) do
+    with {:ok, category} <- required(snapshot, "category"),
+         {:ok, name} <- required(snapshot, "name") do
+      {:ok,
+       %{
+         public_id: public_id,
+         category: category,
+         name: name,
+         status: optional(snapshot, "status"),
+         content: optional(snapshot, "content")
+       }}
+    end
+  end
+
   defp upsert_projection!(kind, attrs, organization_id, artifact_id, revision_id, snapshot_json) do
     {schema, fields} = projection_schema(kind)
 
@@ -390,6 +404,10 @@ defmodule Acs.Artifacts.Ledger do
      ~w(public_id app name description category definition_json snapshot_json head_revision_id)a}
   end
 
+  defp projection_schema("prompt") do
+    {Prompt, ~w(public_id category name status content snapshot_json head_revision_id)a}
+  end
+
   defp heads_valid?(organization_id) do
     Repo.all(from a in CompanyArtifact, where: a.organization_id == ^organization_id)
     |> Enum.all?(fn artifact ->
@@ -420,6 +438,9 @@ defmodule Acs.Artifacts.Ledger do
   defp projection_for("tool", organization_id, artifact_id),
     do:
       Repo.get_by(TenantTool, organization_id: organization_id, company_artifact_id: artifact_id)
+
+  defp projection_for("prompt", organization_id, artifact_id),
+    do: Repo.get_by(Prompt, organization_id: organization_id, company_artifact_id: artifact_id)
 
   defp validate_kind(kind) when kind in @kinds, do: :ok
   defp validate_kind(_kind), do: {:error, :invalid_kind}

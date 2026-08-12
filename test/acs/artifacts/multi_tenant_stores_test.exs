@@ -118,25 +118,62 @@ defmodule Acs.Artifacts.MultiTenantStoresTest do
     refute File.exists?(Path.join([vault, "orgs", org.slug, "acstools", "tenant-lookup.yaml"]))
   end
 
-  test "ignores tenant vault prompt overrides and returns bundled prompt content", %{vault: vault} do
+  test "honors database prompt overrides and ignores tenant vault files", %{vault: vault} do
     org = create_org("artifact-prompts")
     override = Path.join([vault, "orgs", org.slug, "prompts", "skills", "instructions.md"])
     File.mkdir_p!(Path.dirname(override))
     File.write!(override, "tenant override must not be read")
 
-    Acs.Org.with_current(org.slug, fn ->
-      bundled =
-        Path.join([
-          Application.app_dir(:steward_acs),
-          "priv",
-          "prompts",
-          "skills",
-          "instructions.md"
-        ])
+    bundled =
+      Path.join([
+        Application.app_dir(:steward_acs),
+        "priv",
+        "prompts",
+        "skills",
+        "instructions.md"
+      ])
 
+    Acs.Org.with_current(org.slug, fn ->
       assert Acs.Prompts.instructions("skills") == String.trim(File.read!(bundled))
       refute Acs.Prompts.instructions("skills") == "tenant override must not be read"
+
+      assert {:ok, _} =
+               Acs.Prompts.Store.save_override("skills", "instructions", "database override")
+
+      assert Acs.Prompts.instructions("skills") == "database override"
+
+      assert {:ok, _} =
+               Acs.Prompts.Store.save_override(
+                 "skills",
+                 "instructions",
+                 "revised database override"
+               )
+
+      assert Acs.Prompts.instructions("skills") == "revised database override"
+      assert Acs.Prompts.Store.override_exists?("skills", "instructions")
+
+      assert [%{category: "skills", name: "instructions"}] = Acs.Prompts.Store.overrides()
+
+      assert [_first, second] =
+               Acs.Artifacts.Ledger.history("skills/instructions", :prompt, org.slug)
+
+      assert second.revision_number == 2
+      assert second.operation == "revise"
+
+      assert {:ok, _} = Acs.Prompts.Store.tombstone("skills", "instructions")
+
+      assert [_first, _second, third] =
+               Acs.Artifacts.Ledger.history("skills/instructions", :prompt, org.slug)
+
+      assert third.operation == "tombstone"
+      assert Acs.Prompts.instructions("skills") == String.trim(File.read!(bundled))
+      refute Acs.Prompts.Store.override_exists?("skills", "instructions")
+      assert Acs.Prompts.Store.overrides() == []
     end)
+
+    refute File.exists?(
+             Path.join([vault, "orgs", org.slug, "prompts", "skills", "instructions.md"])
+           ) and Acs.Prompts.instructions("skills") == "tenant override must not be read"
   end
 
   defp spec_entry(purpose) do

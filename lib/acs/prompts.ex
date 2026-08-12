@@ -4,17 +4,38 @@ defmodule Acs.Prompts do
 
   Single-tenant deployments load editable vault prompts first, followed by
   legacy vault locations and bundled `priv/prompts/`. Multi-tenant deployments
-  load only bundled `priv/prompts/` files.
+  load per-org database overrides first (see `Acs.Prompts.Store`), then
+  bundled `priv/prompts/` files.
   """
 
   @doc """
   Load a prompt file by category and name (without extension).
 
-  Returns trimmed file content, or `default` when no file is found.
+  Multi-tenant deployments check for a per-org database override first, then
+  fall back to bundled `priv/prompts/` files. Single-tenant deployments load
+  editable vault prompts first, followed by legacy vault locations and bundled
+  `priv/prompts/`.
+
+  Returns trimmed file content, or `default` when no override or file is found.
   """
   def load(category, name, opts \\ []) when is_binary(category) and is_binary(name) do
     default = Keyword.get(opts, :default, "")
 
+    case database_override(category, name) do
+      {:ok, content} -> content
+      :none -> load_file(category, name, default)
+    end
+  end
+
+  defp database_override(category, name) do
+    if Acs.Org.multi_tenant?() do
+      Acs.Prompts.Store.override(category, name)
+    else
+      :none
+    end
+  end
+
+  defp load_file(category, name, default) do
     category
     |> candidate_paths(name)
     |> Enum.find_value(fn path ->

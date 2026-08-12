@@ -2,6 +2,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
   use AcsWeb, :live_view
 
   alias Acs.Org
+  alias Acs.Prompts.Store
 
   @known_prompts [
     %{
@@ -80,8 +81,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
         selected: nil,
         editor_content: "",
         original_content: "",
-        saving: false,
-        read_only: Org.multi_tenant?()
+        saving: false
       )
 
     {:ok, load_data(socket)}
@@ -98,17 +98,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
     prompt = Enum.find(@known_prompts, &(prompt_id(&1) == id))
 
     if prompt do
-      builtin = load_builtin(prompt.category, prompt.name)
-      file_path = override_path(prompt.category, prompt.name)
-      override_exists = file_path && File.regular?(file_path)
-
-      {content, source} =
-        if override_exists do
-          {:ok, bin} = File.read(file_path)
-          {String.trim(bin), :custom}
-        else
-          {builtin, :builtin}
-        end
+      {content, source, override_exists} = current_content(prompt.category, prompt.name)
 
       socket =
         assign(socket,
@@ -135,59 +125,40 @@ defmodule AcsWeb.AcsLive.PromptsLive do
   def handle_event("editor-input", _params, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_event("save", _params, %{assigns: %{read_only: true}} = socket) do
-    {:noreply, put_flash(socket, :error, "Prompts are code-owned files in multi-tenant mode")}
-  end
-
   def handle_event("save", params, socket) do
     prompt = socket.assigns.selected
     content = Map.get(params, "content", socket.assigns.editor_content)
-    dir = override_dir(prompt.category)
 
-    case dir do
-      nil ->
+    case persist_override(prompt.category, prompt.name, content) do
+      {:ok, _} ->
         {:noreply,
-         put_flash(socket, :error, "No vault prompts directory configured for this org")}
+         socket
+         |> assign(
+           editor_content: content,
+           original_content: content,
+           override_exists: true,
+           source: :custom,
+           saving: false
+         )
+         |> load_data()
+         |> put_flash(:info, "Prompt saved successfully (#{prompt.category}/#{prompt.name}.md)")}
 
-      dir ->
-        file_path = Path.join(dir, "#{prompt.name}.md")
-
-        with :ok <- File.mkdir_p(dir),
-             :ok <- File.write(file_path, content) do
-          {:noreply,
-           socket
-           |> assign(
-             editor_content: content,
-             original_content: content,
-             override_exists: true,
-             source: :custom,
-             saving: false
-           )
-           |> load_data()
-           |> put_flash(:info, "Prompt saved successfully (#{prompt.category}/#{prompt.name}.md)")}
-        else
-          {:error, reason} ->
-            {:noreply,
-             put_flash(socket, :error, "Failed to save prompt: #{format_file_error(reason)}")}
-        end
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Failed to save prompt: #{format_file_error(reason)}")}
     end
   end
 
   @impl true
-  def handle_event("revert", _params, %{assigns: %{read_only: true}} = socket) do
-    {:noreply, put_flash(socket, :error, "Prompts are code-owned files in multi-tenant mode")}
-  end
-
   def handle_event("revert", _params, socket) do
     prompt = socket.assigns.selected
-    file_path = override_path(prompt.category, prompt.name)
 
     cond do
-      is_nil(file_path) or not File.regular?(file_path) ->
+      not override_exists?(prompt.category, prompt.name) ->
         {:noreply, put_flash(socket, :error, "No custom override to revert")}
 
       true ->
-        case File.rm(file_path) do
+        case remove_override(prompt.category, prompt.name) do
           :ok ->
             builtin = load_builtin(prompt.category, prompt.name)
 
@@ -220,9 +191,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
   defp load_data(socket) do
     prompts =
       Enum.map(@known_prompts, fn p ->
-        file_path = override_path(p.category, p.name)
-        override_exists = file_path != nil && File.regular?(file_path)
-        Map.put(p, :override_exists, override_exists)
+        Map.put(p, :override_exists, override_exists?(p.category, p.name))
       end)
 
     assign(socket, prompts: prompts)
@@ -234,6 +203,71 @@ defmodule AcsWeb.AcsLive.PromptsLive do
     case File.read(path) do
       {:ok, content} -> String.trim(content)
       _ -> ""
+    end
+  end
+
+  defp current_content(category, name) do
+    builtin = load_builtin(category, name)
+
+    if Org.multi_tenant?() do
+      case Store.override(category, name) do
+        {:ok, content} -> {content, :custom, true}
+        :none -> {builtin, :builtin, false}
+      end
+    else
+      case override_path(category, name) do
+        nil ->
+          {builtin, :builtin, false}
+
+        file_path ->
+          if File.regular?(file_path) do
+            {:ok, bin} = File.read(file_path)
+            {String.trim(bin), :custom, true}
+          else
+            {builtin, :builtin, false}
+          end
+      end
+    end
+  end
+
+  defp override_exists?(category, name) do
+    if Org.multi_tenant?() do
+      Store.override_exists?(category, name)
+    else
+      case override_path(category, name) do
+        nil -> false
+        file_path -> File.regular?(file_path)
+      end
+    end
+  end
+
+  defp persist_override(category, name, content) do
+    if Org.multi_tenant?() do
+      Store.save_override(category, name, content)
+    else
+      case override_dir(category) do
+        nil ->
+          {:error, :no_vault_dir}
+
+        dir ->
+          with :ok <- File.mkdir_p(dir),
+               :ok <- File.write(Path.join(dir, "#{name}.md"), content),
+               do: {:ok, nil}
+      end
+    end
+  end
+
+  defp remove_override(category, name) do
+    if Org.multi_tenant?() do
+      case Store.tombstone(category, name) do
+        {:ok, _} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      case override_path(category, name) do
+        nil -> {:error, :enoent}
+        file_path -> File.rm(file_path)
+      end
     end
   end
 
@@ -261,6 +295,8 @@ defmodule AcsWeb.AcsLive.PromptsLive do
   defp format_file_error(:enoent), do: "vault path does not exist"
   defp format_file_error(:enospc), do: "no space left on device"
   defp format_file_error(:erofs), do: "vault filesystem is read-only"
+  defp format_file_error(:no_vault_dir), do: "no vault prompts directory configured for this org"
+  defp format_file_error({:ledger_write_failed, reason}), do: to_string(reason)
   defp format_file_error(reason), do: inspect(reason)
 
   defp source_badge(:custom), do: "Custom override"
@@ -302,8 +338,10 @@ defmodule AcsWeb.AcsLive.PromptsLive do
         <p class="account-kicker" style="font-size: 0.5rem; margin-bottom: 6px;"><span>Workspace</span> / Prompts</p>
         <h1 style="font-size: 1.3rem; margin-bottom: 6px;">Prompt editor</h1>
         <p style="font-size: 0.82rem;">
-          <%= if @read_only do %>
-            Multi-tenant prompts are code-owned files shipped from <code>priv/prompts/</code> and are read-only here.
+          <%= if Org.multi_tenant?() do %>
+            Edit per-org prompt overrides (memory intake, auditors, instructions). Overrides are
+            stored per-org in the immutable artifact ledger and take effect on the next load;
+            builtin defaults remain until you save.
           <% else %>
             Edit org prompts (memory intake, auditors, instructions). Overrides go to your vault
             <code>prompts/</code> and take effect on the next load; builtin defaults remain until you save.
@@ -350,7 +388,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
                     type="button"
                     phx-click="revert"
                     class="btn btn-ghost btn-sm"
-                    disabled={@read_only or not @override_exists}
+                    disabled={not @override_exists}
                     data-confirm="Revert to the builtin prompt? Your custom override will be deleted."
                   >
                     Revert
@@ -358,7 +396,7 @@ defmodule AcsWeb.AcsLive.PromptsLive do
                   <button
                     type="submit"
                     class="btn btn-primary btn-sm"
-                    disabled={@read_only or @saving or @editor_content == @original_content}
+                    disabled={@saving or @editor_content == @original_content}
                   >
                     <%= if @saving, do: "Saving…", else: "Save override" %>
                   </button>
@@ -372,7 +410,6 @@ defmodule AcsWeb.AcsLive.PromptsLive do
                   class="form-control prompt-textarea"
                   phx-debounce="300"
                   spellcheck="false"
-                  readonly={@read_only}
                 ><%= @editor_content %></textarea>
               </div>
 
