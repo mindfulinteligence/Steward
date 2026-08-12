@@ -9,7 +9,7 @@
 #   CONFIRM=yes SERVER=ubuntu@HOST ./scripts/rollback.sh # non-interactive (CI/agent after user approval)
 #
 # Env:
-#   SERVER=       required, e.g. ubuntu@139.99.172.4
+#   SERVER=       required, e.g. ubuntu@139.99.89.23
 #   CONFIRM=yes   skip the interactive prompt (use only AFTER the user has approved)
 #   REMOTE_DIR=   default /home/ubuntu/steward_acs
 #   PUBLIC_URL=   override smoke base URL (default: MCP_PUBLIC_URL from remote .env)
@@ -24,7 +24,7 @@ CONFIRM="${CONFIRM:-}"
 PUBLIC_URL="${PUBLIC_URL:-}"
 
 if [[ -z "$SERVER" ]]; then
-  echo "ERROR: SERVER must be set (e.g. SERVER=ubuntu@139.99.172.4)" >&2
+  echo "ERROR: SERVER must be set (e.g. SERVER=ubuntu@139.99.89.23)" >&2
   exit 1
 fi
 

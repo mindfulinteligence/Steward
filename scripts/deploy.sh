@@ -48,7 +48,7 @@ for arg in "$@"; do
 done
 
 if [[ "$MODE" != "push-only" && -z "$SERVER" ]]; then
-  echo "ERROR: SERVER must be set (e.g. SERVER=ubuntu@139.99.172.4)" >&2
+  echo "ERROR: SERVER must be set (e.g. SERVER=ubuntu@139.99.89.23)" >&2
   exit 1
 fi
 
