@@ -32,6 +32,7 @@ docker compose up -d
 Workflow: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
 
 1. Merge/push to `prod` (paths under `lib/`, `config/`, `priv/`, `assets/`, `Dockerfile`, compose/Caddy, deploy scripts, or the workflow itself), **or** run **Actions → Deploy → Run workflow**.
+   - ⚠️ The push path filter **does NOT include `scripts/` test/smoke scripts** (e.g. `scripts/smoke-chat-tools.sh`). A smoke-only commit pushed to `prod` triggers **no** deploy — this looks like a silent failure. Deploy such changes with a manual dispatch instead: `gh workflow run deploy.yml --ref prod -f environment=prod -f cutover=true -f image_tag="" -f skip_ci=false -f rollback=false`.
 2. Job **CI gate** runs the reusable CI workflow (`mix test` + prod release compile + Credo). **Build and cutover do not start if CI fails.** Manual dispatch can set `skip_ci` only for break-glass.
 3. Job `build-push` builds the Postgres release image and pushes `naharemete/steward_acs:<git-sha>` (+ `:multitenant`).
 4. Job `cutover` SSHs to the Environment host and runs `./scripts/deploy.sh --resume` (**blue/green**): pull idle slot → wait healthy → rewrite `caddy/acs_upstream.caddyfile` + `caddy reload` (recreate Caddy only if Caddyfile/certs changed) → stop previous slot.
