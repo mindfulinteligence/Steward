@@ -13,6 +13,12 @@ defmodule Acs.LLM do
 
   # Provider priority order is resolved per (region, call_type) by Acs.LLM.Router.
 
+  # Prompts split on this marker: everything before it is static instructions
+  # (sent as a system message), everything after is the per-call JSON payload
+  # (sent as the user message). Keeps the static prefix byte-identical across
+  # calls so provider prefix/context caching can hit.
+  @user_payload_marker "<!-- USER PAYLOAD -->"
+
   @doc """
   Evaluates a proposed memory entry for quality, noise, and contradictions.
 
@@ -260,8 +266,15 @@ defmodule Acs.LLM do
   # call_type = calling process (memory_audit, skill_audit, …); subject_id = entity.
 
   defp try_providers(call_type, providers, prompt, subject_id) do
-    try_providers(call_type, providers, prompt, subject_id, [], byte_size(prompt))
+    try_providers(call_type, providers, prompt, subject_id, [], prompt_chars(prompt))
   end
+
+  # Prompt is a {system_prompt, user_prompt} tuple; count both parts so
+  # prompt_chars telemetry reflects the full request size.
+  defp prompt_chars({system_prompt, user_prompt}),
+    do: byte_size(system_prompt || "") + byte_size(user_prompt)
+
+  defp prompt_chars(prompt) when is_binary(prompt), do: byte_size(prompt)
 
   defp try_providers(call_type, [], _prompt, subject_id, errors, _prompt_chars) do
     providers = errors |> Enum.map(fn {provider, _reason} -> provider end) |> Enum.reverse()
@@ -333,7 +346,8 @@ defmodule Acs.LLM do
     else
       api_key = resolve_api_key(provider_id)
 
-      messages = [%{role: "user", content: prompt}]
+      {system_prompt, user_prompt} = split_prompt(prompt)
+      messages = build_messages(system_prompt, user_prompt, config)
 
       model =
         Acs.LLM.Router.model_for(
@@ -672,6 +686,42 @@ defmodule Acs.LLM do
     end
   end
 
+  # Splits a loaded template into {system_prompt, user_prompt} on the user
+  # payload marker. Templates without the marker (e.g. a custom
+  # MEMORY_EVALUATION_PROMPT_PATH file or vault override) fall back to a single
+  # user message containing the whole template — backward compatible.
+  defp split_template(template) do
+    case String.split(template, @user_payload_marker, parts: 2) do
+      [system_part, user_part] ->
+        {String.trim(system_part), String.trim(user_part)}
+
+      [_whole] ->
+        {nil, String.trim(template)}
+    end
+  end
+
+  defp split_prompt({system_prompt, user_prompt}), do: {system_prompt, user_prompt}
+  defp split_prompt(prompt) when is_binary(prompt), do: {nil, prompt}
+
+  # Static instructions go in a system message when the provider supports one;
+  # otherwise they are prepended to the user payload so the message still has a
+  # single stable prefix. The JSON payload always stays last.
+  defp build_messages(system_prompt, user_prompt, config) do
+    cond do
+      config.supports_system_role and is_binary(system_prompt) and system_prompt != "" ->
+        [
+          %{role: "system", content: system_prompt},
+          %{role: "user", content: user_prompt}
+        ]
+
+      is_binary(system_prompt) and system_prompt != "" ->
+        [%{role: "user", content: system_prompt <> "\n\n" <> user_prompt}]
+
+      true ->
+        [%{role: "user", content: user_prompt}]
+    end
+  end
+
   defp build_skill_evaluation_prompt(skill, context_skills) do
     skill_json =
       Jason.encode!(%{
@@ -686,9 +736,14 @@ defmodule Acs.LLM do
     prompt_name = prompt_name_for_audience(skill.audience)
     template = load_prompt!("skills", prompt_name)
 
-    template
-    |> String.replace("{{skill_json}}", skill_json)
-    |> String.replace("{{existing_skills_json}}", existing_skills_json)
+    {system_prompt, user_prompt} = split_template(template)
+
+    user_prompt =
+      user_prompt
+      |> String.replace("{{skill_json}}", skill_json)
+      |> String.replace("{{existing_skills_json}}", existing_skills_json)
+
+    {system_prompt, user_prompt}
   end
 
   defp build_spec_evaluation_prompt(entry, context_entries) do
@@ -711,9 +766,14 @@ defmodule Acs.LLM do
     prompt_name = prompt_name_for_audience(entry.audience)
     template = load_prompt!("specs", prompt_name)
 
-    template
-    |> String.replace("{{entry_json}}", entry_json)
-    |> String.replace("{{existing_entries_json}}", existing_entries_json)
+    {system_prompt, user_prompt} = split_template(template)
+
+    user_prompt =
+      user_prompt
+      |> String.replace("{{entry_json}}", entry_json)
+      |> String.replace("{{existing_entries_json}}", existing_entries_json)
+
+    {system_prompt, user_prompt}
   end
 
   defp build_evaluation_prompt(memory, context_memories) do
@@ -737,7 +797,14 @@ defmodule Acs.LLM do
         :default -> load_prompt!("memory", prompt_name)
       end
 
-    do_interpolate(template, memory_json, existing_memories_json)
+    {system_prompt, user_prompt} = split_template(template)
+
+    user_prompt =
+      user_prompt
+      |> String.replace("{{memory_json}}", memory_json)
+      |> String.replace("{{existing_memories_json}}", existing_memories_json)
+
+    {system_prompt, user_prompt}
   end
 
   defp memory_prompt_override do
@@ -760,12 +827,6 @@ defmodule Acs.LLM do
     end
   end
 
-  defp do_interpolate(template, memory_json, existing_memories_json) do
-    template
-    |> String.replace("{{memory_json}}", memory_json)
-    |> String.replace("{{existing_memories_json}}", existing_memories_json)
-  end
-
   defp build_intake_prompt(candidate) do
     template = load_prompt!("memory", "intake")
 
@@ -785,7 +846,8 @@ defmodule Acs.LLM do
             Map.get(candidate, :audience)
       })
 
-    String.replace(template, "{{candidate_json}}", candidate_json)
+    {system_prompt, user_prompt} = split_template(template)
+    {system_prompt, String.replace(user_prompt, "{{candidate_json}}", candidate_json)}
   end
 
   defp build_skill_intake_prompt(candidate) do
@@ -804,6 +866,7 @@ defmodule Acs.LLM do
             Map.get(candidate, :audience)
       })
 
-    String.replace(template, "{{candidate_json}}", candidate_json)
+    {system_prompt, user_prompt} = split_template(template)
+    {system_prompt, String.replace(user_prompt, "{{candidate_json}}", candidate_json)}
   end
 end

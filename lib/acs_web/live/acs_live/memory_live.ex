@@ -606,7 +606,7 @@ defmodule AcsWeb.AcsLive.MemoryLive do
 
         <!-- Detail panel -->
         <%= if @selected_memory do %>
-          <div class="card governance-detail" style="padding: 20px;">
+          <div class="card governance-detail governance-detail-expand" style="padding: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
               <div style="display: flex; gap: 8px; align-items: center;">
                 <span class={"status-dot status-#{@selected_memory.status}"}></span>
@@ -681,9 +681,9 @@ defmodule AcsWeb.AcsLive.MemoryLive do
             <% end %>
 
             <%= if @selected_memory.content do %>
-              <div style="margin-bottom: 16px;">
+              <div style="margin-bottom: 16px; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;">
                 <div style="font-family: var(--font-mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px;">Content</div>
-                <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-size: 0.75rem; line-height: 1.5; max-height: 300px; overflow-y: auto; color: var(--text-dim);"><%= @selected_memory.content %></pre>
+                <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-size: 0.75rem; line-height: 1.5; flex: 1 1 auto; min-height: 200px; overflow-y: auto; color: var(--text-dim);"><%= @selected_memory.content %></pre>
               </div>
             <% end %>
 

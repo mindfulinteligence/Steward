@@ -1282,6 +1282,11 @@
         position: sticky;
         top: 16px;
       }
+      .governance-detail-expand {
+        height: calc(100vh - 140px);
+        display: flex;
+        flex-direction: column;
+      }
 
       .tool-detail {
         animation: riseIn 300ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
@@ -2494,6 +2499,7 @@
         .btn-copy-prompt { width: 100%; }
         .mcp-connectors-summary { align-items: flex-start; flex-direction: column; gap: 4px; }
         .governance-detail { flex: 1 1 100%; max-height: none; position: static; }
+        .governance-detail-expand { height: auto; }
         .governance-layout { flex-direction: column; gap: 16px; }
         .governance-list { width: 100%; }
         .governance-toolbar { align-items: stretch; flex-direction: column; }

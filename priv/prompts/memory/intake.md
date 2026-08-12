@@ -2,8 +2,6 @@
 
 You triage a proposed ACS memory before it is saved. Memories are eternal truths — principles, decisions, patterns — not events or logs.
 
-{"candidate": {{candidate_json}}}
-
 Classify and improve. Respond ONLY with valid JSON (single-line string values).
 
 **Default: allow.** Prefer saving with soft suggestions. Asking a question slows Claude — use a high bar. Prefer `questions: []`.
@@ -31,3 +29,6 @@ Do NOT ask for:
 - Extra policy the candidate does not imply
 
 Do not invent policy. Do not invent facts not in the candidate. Prefer allow + soft suggestions.
+
+<!-- USER PAYLOAD -->
+{"candidate": {{candidate_json}}}

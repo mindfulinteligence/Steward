@@ -2,8 +2,6 @@
 
 You triage a proposed ACS skill before it is saved. Skills are reusable step-by-step procedures other agents will follow.
 
-{"candidate": {{candidate_json}}}
-
 Respond ONLY with valid JSON (single-line string values).
 
 **Default: allow.** Prefer `allow: true` and `questions: []`. Asking a question slows Claude — use a high bar.
@@ -28,3 +26,6 @@ Do NOT ask for:
 - Mild incompleteness if numbered steps exist and are followable
 
 Do not invent policy or facts. Prefer allow.
+
+<!-- USER PAYLOAD -->
+{"candidate": {{candidate_json}}}
