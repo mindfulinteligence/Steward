@@ -39,7 +39,10 @@ defmodule Acs.Observability.CacheOpsTest do
 
   test "cache metadata fields export through AxiomLogBackend" do
     event =
-      AxiomLogBackend.to_event(:info, "cache miss", nil,
+      AxiomLogBackend.to_event(
+        :info,
+        "cache miss",
+        nil,
         CacheOps.event(
           cache_name: :skills_cache,
           result: "miss",
