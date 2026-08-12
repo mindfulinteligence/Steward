@@ -31,11 +31,12 @@ defmodule Acs.AuthorityLevelsTest do
     refute AuthorityLevels.can_read?(nil, 1)
   end
 
-  # Full high(1)/elevated(2)/standard(3) matrix — read = own+lower; edit = strictly lower.
+  # Full high(1)/elevated(2)/standard(3) matrix — read = own+lower; edit = strictly
+  # lower, except the top rank (1) may also edit its own level.
   test "can_read?/can_edit? matrix across default hierarchy levels" do
     for viewer <- 1..3, memory <- 1..3 do
       assert AuthorityLevels.can_read?(viewer, memory) == memory >= viewer
-      assert AuthorityLevels.can_edit?(viewer, memory) == memory > viewer
+      assert AuthorityLevels.can_edit?(viewer, memory) == (memory > viewer or viewer == 1)
     end
   end
 

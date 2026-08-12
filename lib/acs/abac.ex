@@ -107,6 +107,24 @@ defmodule Acs.Abac do
   end
 
   @doc """
+  Returns true when the viewer is the creator of the item.
+
+  The creator may always retire (stale/deprecate) their own memories regardless
+  of rank — used by `set_memory_status` on top of `can_edit?/2`.
+  """
+  def creator?(%__MODULE__{} = ctx, item) do
+    case {agent_id(ctx), creator_id(item)} do
+      {viewer, creator} when is_binary(viewer) and viewer != "" and is_binary(creator) ->
+        viewer == creator
+
+      _ ->
+        false
+    end
+  end
+
+  defp agent_id(%__MODULE__{agent_id: agent_id}), do: agent_id
+
+  @doc """
   Validates write attributes (`visibility`, `team`, `project`).
 
   Checks shape only — every role may write every scope. Authority is applied by

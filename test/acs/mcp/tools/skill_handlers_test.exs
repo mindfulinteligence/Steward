@@ -160,17 +160,38 @@ defmodule Acs.MCP.Tools.SkillHandlersTest do
                  "_auth_authority_sort_order" => 1
                })
 
-      # Same-rank member tries to edit -> denied.
+      # Member at a lower rank (2) tries to edit rank-1 content -> denied.
       assert {:error, msg} =
                SkillHandlers.skill_save(%{
                  "name" => "ranked-proc",
                  "content" => "## Steps\n1. Changed\n",
                  "intake_confirmed" => true,
                  "_auth_role" => "member",
-                 "_auth_authority_sort_order" => 1
+                 "_auth_authority_sort_order" => 2
                })
 
       assert msg =~ "Access denied"
+    end
+
+    test "top-rank member can edit a skill at their own level" do
+      assert {:ok, %{saved: true}} =
+               SkillHandlers.skill_save(%{
+                 "name" => "own-rank-proc",
+                 "content" => "## Steps\n1. Do the thing\n2. Verify\n",
+                 "intake_confirmed" => true,
+                 "_auth_role" => "admin",
+                 "_auth_authority_sort_order" => 1
+               })
+
+      # Member at the top rank (1) can edit rank-1 content (own level).
+      assert {:ok, %{saved: true}} =
+               SkillHandlers.skill_save(%{
+                 "name" => "own-rank-proc",
+                 "content" => "## Steps\n1. Changed\n2. Verify\n",
+                 "intake_confirmed" => true,
+                 "_auth_role" => "member",
+                 "_auth_authority_sort_order" => 1
+               })
     end
 
     test "member can edit a skill strictly below own rank" do

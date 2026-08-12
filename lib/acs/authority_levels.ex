@@ -128,8 +128,9 @@ defmodule Acs.AuthorityLevels do
 
   Editing is stricter than reading: a viewer may only edit items stamped at a
   rank strictly below their own (`memory_order > viewer_order`, since 1 is
-  highest). Unranked items (nil) follow the same fallbacks as `can_read?/2` for
-  backwards compatibility. Admin/owner bypass lives at the call sites.
+  highest) — except the top rank (sort_order 1), which may also edit items at
+  its own level. Unranked items (nil) follow the same fallbacks as `can_read?/2`
+  for backwards compatibility. Admin/owner bypass lives at the call sites.
   """
   def can_edit?(nil, nil), do: true
   def can_edit?(nil, item_order) when is_integer(item_order), do: false
@@ -137,7 +138,7 @@ defmodule Acs.AuthorityLevels do
 
   def can_edit?(viewer_order, item_order)
       when is_integer(viewer_order) and is_integer(item_order) do
-    item_order > viewer_order
+    item_order > viewer_order or viewer_order == 1
   end
 
   def can_edit?(_, _), do: false

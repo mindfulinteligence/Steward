@@ -265,7 +265,10 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
             {:error, "Memory not found"}
 
           existing ->
-            if Acs.Abac.can_edit?(ctx, existing) do
+            retire? = status in ~w(stale deprecated)
+
+            if Acs.Abac.can_edit?(ctx, existing) or
+                 (retire? and Acs.Abac.creator?(ctx, existing)) do
               actor_id = args["_auth_attribution"] || args["_auth_agent_id"] || "unknown"
 
               actor_type =

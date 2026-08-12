@@ -133,6 +133,90 @@ defmodule Acs.MCP.Tools.MemoryConsentTest do
     assert memory.authority_sort_order == 3
   end
 
+  test "creator can deprecate their own memory regardless of rank" do
+    org = Acs.Org.current()
+    Acs.AuthorityLevels.ensure_defaults!(org)
+    title = "Creator retire unique #{System.unique_integer([:positive])}"
+
+    assert {:ok, %{id: id}} =
+             MemoryHandlers.save_memory(%{
+               "kind" => "learning",
+               "title" => title,
+               "content" => "Written by a standard-clearance collaborator at their own rank",
+               "scope_path" => "acme/exec",
+               "visibility" => "org",
+               "intake_confirmed" => true,
+               "_auth_agent_id" => "alice@acme.com",
+               "_auth_role" => "collaborator",
+               "_auth_authority_level" => "standard",
+               "_auth_authority_sort_order" => 3
+             })
+
+    memory = Acs.Memory.Indexer.get_memory(id, org)
+    assert memory.authority_sort_order == 3
+
+    # Governor approves first, mirroring the real-world approved SSH mapping.
+    assert {:ok, _} =
+             MemoryHandlers.set_memory_status(%{
+               "memory_id" => id,
+               "status" => "approved",
+               "_auth_role" => "admin"
+             })
+
+    # Same-rank (3) non-admin cannot normally edit a rank-3 item (3 > 3 is false),
+    # but as creator they may always retire their own memory.
+    assert {:ok, %{status: "deprecated"}} =
+             MemoryHandlers.set_memory_status(%{
+               "memory_id" => id,
+               "status" => "deprecated",
+               "_auth_agent_id" => "alice@acme.com",
+               "_auth_role" => "collaborator",
+               "_auth_authority_level" => "standard",
+               "_auth_authority_sort_order" => 3
+             })
+  end
+
+  test "non-creator cannot deprecate memory at or above their own rank" do
+    org = Acs.Org.current()
+    Acs.AuthorityLevels.ensure_defaults!(org)
+    title = "Noncreator retire unique #{System.unique_integer([:positive])}"
+
+    assert {:ok, %{id: id}} =
+             MemoryHandlers.save_memory(%{
+               "kind" => "learning",
+               "title" => title,
+               "content" => "Written by a standard-clearance collaborator at their own rank",
+               "scope_path" => "acme/exec",
+               "visibility" => "org",
+               "intake_confirmed" => true,
+               "_auth_agent_id" => "alice@acme.com",
+               "_auth_role" => "collaborator",
+               "_auth_authority_level" => "standard",
+               "_auth_authority_sort_order" => 3
+             })
+
+    # Governor approves first.
+    assert {:ok, _} =
+             MemoryHandlers.set_memory_status(%{
+               "memory_id" => id,
+               "status" => "approved",
+               "_auth_role" => "admin"
+             })
+
+    # bob is not the creator and is at the same rank (3), so can_edit?(3, 3) is false.
+    assert {:error, msg} =
+             MemoryHandlers.set_memory_status(%{
+               "memory_id" => id,
+               "status" => "deprecated",
+               "_auth_agent_id" => "bob@acme.com",
+               "_auth_role" => "collaborator",
+               "_auth_authority_level" => "standard",
+               "_auth_authority_sort_order" => 3
+             })
+
+    assert msg =~ "Access denied"
+  end
+
   defp decode_tags(%{tags_json: json}) when is_binary(json) do
     case Jason.decode(json) do
       {:ok, list} when is_list(list) -> list
