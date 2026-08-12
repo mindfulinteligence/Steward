@@ -713,6 +713,8 @@ defmodule Acs.MCP.ToolRegistry do
          permissions: context[:permissions] || context["permissions"] || [],
          allowed_teams: context[:allowed_teams] || context["allowed_teams"],
          allowed_projects: context[:allowed_projects] || context["allowed_projects"],
+         authority_level: context[:authority_level] || context["authority_level"],
+         authority_sort_order: context[:authority_sort_order] || context["authority_sort_order"],
          agent_id: context[:agent_id] || context["agent_id"],
          attribution_id: context[:attribution_id] || context["attribution_id"],
          audience: context[:audience] || context["audience"],

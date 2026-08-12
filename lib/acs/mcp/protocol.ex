@@ -33,7 +33,9 @@ defmodule Acs.MCP.Protocol do
         agent_permissions \\ nil,
         agent_allowed_teams \\ nil,
         agent_allowed_projects \\ nil,
-        agent_identity \\ nil
+        agent_identity \\ nil,
+        agent_authority_level \\ nil,
+        agent_authority_sort_order \\ nil
       )
 
   def handle_message(
@@ -43,7 +45,9 @@ defmodule Acs.MCP.Protocol do
         agent_permissions,
         agent_allowed_teams,
         agent_allowed_projects,
-        agent_identity
+        agent_identity,
+        agent_authority_level,
+        agent_authority_sort_order
       )
       when is_binary(message) do
     case Jason.decode(message) do
@@ -55,7 +59,9 @@ defmodule Acs.MCP.Protocol do
           agent_permissions,
           agent_allowed_teams,
           agent_allowed_projects,
-          agent_identity
+          agent_identity,
+          agent_authority_level,
+          agent_authority_sort_order
         )
 
       {:error, reason} ->
@@ -70,7 +76,9 @@ defmodule Acs.MCP.Protocol do
         agent_permissions,
         agent_allowed_teams,
         agent_allowed_projects,
-        agent_identity
+        agent_identity,
+        agent_authority_level,
+        agent_authority_sort_order
       )
       when not is_nil(id) do
     params = msg["params"] || %{}
@@ -84,7 +92,9 @@ defmodule Acs.MCP.Protocol do
       agent_permissions,
       agent_allowed_teams,
       agent_allowed_projects,
-      agent_identity
+      agent_identity,
+      agent_authority_level,
+      agent_authority_sort_order
     )
   end
 
@@ -95,7 +105,9 @@ defmodule Acs.MCP.Protocol do
         _agent_permissions,
         _agent_allowed_teams,
         _agent_allowed_projects,
-        _agent_identity
+        _agent_identity,
+        _agent_authority_level,
+        _agent_authority_sort_order
       ) do
     params = msg["params"] || %{}
     handle_notification(method, params)
@@ -108,7 +120,9 @@ defmodule Acs.MCP.Protocol do
         _agent_permissions,
         _agent_allowed_teams,
         _agent_allowed_projects,
-        _agent_identity
+        _agent_identity,
+        _agent_authority_level,
+        _agent_authority_sort_order
       ) do
     {:ok, error_response(nil, -32600, "Invalid Request", "Missing method")}
   end
@@ -120,7 +134,9 @@ defmodule Acs.MCP.Protocol do
         _agent_permissions,
         _agent_allowed_teams,
         _agent_allowed_projects,
-        _agent_identity
+        _agent_identity,
+        _agent_authority_level,
+        _agent_authority_sort_order
       ) do
     {:ok, error_response(nil, -32600, "Invalid Request", "Not a valid JSON-RPC 2.0 message")}
   end
@@ -154,7 +170,9 @@ defmodule Acs.MCP.Protocol do
          _agent_permissions,
          _agent_allowed_teams,
          _agent_allowed_projects,
-         agent_identity
+         agent_identity,
+         _agent_authority_level,
+         _agent_authority_sort_order
        ) do
     audience = Acs.MCP.ClientSession.remember_initialize(params || %{}, agent_identity)
 
@@ -177,7 +195,9 @@ defmodule Acs.MCP.Protocol do
          agent_permissions,
          _agent_allowed_teams,
          _agent_allowed_projects,
-         agent_identity
+         agent_identity,
+         _agent_authority_level,
+         _agent_authority_sort_order
        ) do
     with :ok <- require_agent_role(agent_role) do
       audience = Acs.MCP.ClientSession.resolve_audience(agent_identity)
@@ -213,7 +233,9 @@ defmodule Acs.MCP.Protocol do
          agent_permissions,
          agent_allowed_teams,
          agent_allowed_projects,
-         agent_identity
+         agent_identity,
+         agent_authority_level,
+         agent_authority_sort_order
        ) do
     with :ok <- require_agent_role(agent_role) do
       do_tools_call(
@@ -224,7 +246,9 @@ defmodule Acs.MCP.Protocol do
         agent_permissions,
         agent_allowed_teams,
         agent_allowed_projects,
-        agent_identity
+        agent_identity,
+        agent_authority_level,
+        agent_authority_sort_order
       )
     else
       {:error, reason} ->
@@ -241,7 +265,9 @@ defmodule Acs.MCP.Protocol do
          _agent_permissions,
          _agent_allowed_teams,
          _agent_allowed_projects,
-         _agent_identity
+         _agent_identity,
+         _agent_authority_level,
+         _agent_authority_sort_order
        ) do
     {:ok, success_response(id, %{})}
   end
@@ -255,7 +281,9 @@ defmodule Acs.MCP.Protocol do
          _agent_permissions,
          _agent_allowed_teams,
          _agent_allowed_projects,
-         _agent_identity
+         _agent_identity,
+         _agent_authority_level,
+         _agent_authority_sort_order
        ) do
     {:ok, error_response(id, -32601, "Method not found", method)}
   end
@@ -309,7 +337,9 @@ defmodule Acs.MCP.Protocol do
          agent_permissions,
          agent_allowed_teams,
          agent_allowed_projects,
-         agent_identity
+         agent_identity,
+         agent_authority_level,
+         agent_authority_sort_order
        ) do
     requested_name = params["name"]
     requested_arguments = params["arguments"] || %{}
@@ -372,6 +402,8 @@ defmodule Acs.MCP.Protocol do
       permissions: agent_permissions,
       allowed_teams: agent_allowed_teams,
       allowed_projects: agent_allowed_projects,
+      authority_level: agent_authority_level,
+      authority_sort_order: agent_authority_sort_order,
       agent_id: agent_id,
       attribution_id: attribution_id,
       audience: audience,

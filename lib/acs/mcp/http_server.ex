@@ -438,7 +438,9 @@ defmodule Acs.MCP.HTTPServer do
                  conn.assigns[:agent_permissions],
                  conn.assigns[:agent_allowed_teams],
                  conn.assigns[:agent_allowed_projects],
-                 conn.assigns[:agent_identity]
+                 conn.assigns[:agent_identity],
+                 conn.assigns[:agent_authority_level],
+                 conn.assigns[:agent_authority_sort_order]
                )
              end) do
           # MCP notifications (e.g. notifications/initialized) have no JSON-RPC reply.
@@ -496,7 +498,9 @@ defmodule Acs.MCP.HTTPServer do
                  conn.assigns[:agent_permissions],
                  conn.assigns[:agent_allowed_teams],
                  conn.assigns[:agent_allowed_projects],
-                 conn.assigns[:agent_identity]
+                 conn.assigns[:agent_identity],
+                 conn.assigns[:agent_authority_level],
+                 conn.assigns[:agent_authority_sort_order]
                )
              end) do
           {:ok, nil} ->

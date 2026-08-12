@@ -194,6 +194,49 @@ defmodule Acs.MCP.ProtocolTest do
 
       assert {:ok, nil} = Protocol.handle_message(msg, nil)
     end
+
+    test "authority context flows from handle_message args into tool handler" do
+      title = "Authority flow unique #{System.unique_integer([:positive])}"
+
+      call = %{
+        "jsonrpc" => "2.0",
+        "id" => 99,
+        "method" => "tools/call",
+        "params" => %{
+          "name" => "save_memory",
+          "arguments" => %{
+            "kind" => "learning",
+            "title" => title,
+            "content" => "Proves authority context reaches the handler",
+            "scope_path" => "acme/exec",
+            "visibility" => "org",
+            "intake_confirmed" => true
+          }
+        }
+      }
+
+      # args 8-9 = agent_authority_level, agent_authority_sort_order (the plug's
+      # conn.assigns, which are invisible to the ToolRegistry GenServer process).
+      assert {:ok, %{"result" => %{"content" => [%{"text" => text}]}}} =
+               Protocol.handle_message(
+                 call,
+                 "collaborator",
+                 "acme",
+                 [],
+                 nil,
+                 nil,
+                 "alice@acme.com",
+                 "high",
+                 1
+               )
+
+      assert {:ok, %{"id" => id}} = Jason.decode(text)
+      memory = Acs.Memory.Indexer.get_memory(id, "acme")
+
+      # Previously nil flowed through and writer_authority_sort_order fell back
+      # to the org's lowest rank (3); the authority must now be stamped rank 1.
+      assert memory.authority_sort_order == 1
+    end
   end
 
   describe "local mode coding identity (single-tenant admin self-identifies)" do
