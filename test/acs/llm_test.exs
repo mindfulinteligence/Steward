@@ -172,4 +172,52 @@ defmodule Acs.LLMTest do
       assert String.contains?(source, "count: length(providers)")
     end
   end
+
+  describe "provider base_url overrides" do
+    test "empty base_url override is never passed to the client" do
+      # Regression: OPENAI_BASE_URL="" (or OPENROUTER_BASE_URL="") resolved to an
+      # empty string, which is truthy in Elixir, so opts[:base_url] = "" clobbered
+      # the provider's real URL and the client built "url: \"/chat/completions\"",
+      # crashing with "scheme is required for url: /chat/completions".
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert String.contains?(
+               source,
+               "if is_binary(used_base_url) and used_base_url != \"\","
+             )
+    end
+
+    test "openai and openrouter base URLs are hardcoded, not env-overridable" do
+      # Regression: empty OPENAI_BASE_URL / OPENROUTER_BASE_URL env values used to
+      # clobber the canonical provider URLs. Base URLs must come only from the
+      # hardcoded provider configs (LLMUtils openai => api.openai.com/v1, app-side
+      # openrouter => openrouter.ai/api/v1); only the model stays env-overridable.
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      refute String.contains?(source, ~s[provider_overrides("openai", :base_url)])
+      refute String.contains?(source, ~s[provider_overrides("openrouter", :base_url)])
+      assert String.contains?(source, ~s[_ -> config.base_url])
+      assert String.contains?(source, "base_url: \"https://openrouter.ai/api/v1\"")
+    end
+
+    test "provider exceptions are caught and logged with metadata, not as raw crashes" do
+      # Regression: when the client raised (e.g. Req on a malformed URL) the
+      # exception escaped call_provider and surfaced as a bare
+      # "ToolRegistry tool crash" line with no provider/call_type/base_url context.
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert String.contains?(
+               source,
+               ~S|"[Acs.LLM] Provider #{provider_id} raised: #{Exception.message(exception)}"|
+             )
+
+      assert String.contains?(source, "error_type: \"provider_exception\"")
+      assert String.contains?(source, "base_url: used_base_url")
+
+      assert String.contains?(
+               source,
+               "{:error, {:provider_exception, Exception.message(exception)}}"
+             )
+    end
+  end
 end

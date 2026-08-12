@@ -137,7 +137,9 @@ defmodule Acs.Observability.AgentOps do
       "intake_outcome" => Map.get(intake, :outcome),
       "intake_source" => Map.get(intake, :source),
       "intake_question_id" => Map.get(intake, :question_id),
-      "intake_sensitive" => Map.get(intake, :suggested_sensitive)
+      "intake_sensitive" => Map.get(intake, :suggested_sensitive),
+      "intake_provider" => Map.get(intake, :provider),
+      "intake_model" => Map.get(intake, :model)
     }
 
     enqueue_axiom(event)
@@ -433,6 +435,9 @@ defmodule Acs.Observability.AgentOps do
       Map.get(payload, :question) || Map.get(payload, "question") ||
         Map.get(intake, :notes) || Map.get(intake, "notes")
 
+    provider = Map.get(intake, :provider) || Map.get(intake, "provider")
+    model = Map.get(intake, :model) || Map.get(intake, "model")
+
     confirmed? = truthy?(Map.get(args, "intake_confirmed") || Map.get(args, :intake_confirmed))
 
     outcome =
@@ -449,7 +454,9 @@ defmodule Acs.Observability.AgentOps do
         source: source && to_string(source),
         question_id: question_id,
         suggested_sensitive: truthy?(sensitive),
-        notes: notes && to_string(notes) |> String.slice(0, 200)
+        notes: notes && to_string(notes) |> String.slice(0, 200),
+        provider: provider && to_string(provider),
+        model: model && to_string(model)
       }
     else
       %{}

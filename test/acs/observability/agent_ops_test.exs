@@ -66,6 +66,22 @@ defmodule Acs.Observability.AgentOpsTest do
                {:ok, %{status: "proposed", saved: true, intake: %{source: "llm"}}},
                %{}
              )
+
+    assert %{outcome: "allowed", provider: "openrouter", model: "deepseek/deepseek-4-flash"} =
+             AgentOps.intake_meta(
+               "save_memory",
+               {:ok,
+                %{
+                  status: "proposed",
+                  saved: true,
+                  intake: %{
+                    source: "llm",
+                    provider: "openrouter",
+                    model: "deepseek/deepseek-4-flash"
+                  }
+                }},
+               %{}
+             )
   end
 
   test "feedback_signal prefers win then gap then pain" do

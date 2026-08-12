@@ -51,7 +51,7 @@ defmodule Mix.Tasks.Acs.Feedback.Report do
   defp summarize_learned(feedback) do
     Mix.Shell.IO.info("--- Learned for Future Agents ---")
     Mix.Shell.IO.info("  (what agents learned that will help future agents)")
-    entries = feedback |> Enum.map(& &1.most_surprising) |> Enum.reject(&is_nil/1)
+    entries = feedback |> Enum.map(& &1.learned_for_agents) |> Enum.reject(&is_nil/1)
 
     if Enum.empty?(entries) do
       Mix.Shell.IO.info("  (none)")

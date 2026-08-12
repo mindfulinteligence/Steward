@@ -42,8 +42,8 @@ defmodule Acs.Skills.Intake do
       {:ok, heuristic}
     else
       case LLM.skill_intake_classify(candidate) do
-        {:ok, decoded} ->
-          {:ok, merge_reviews(heuristic, normalize_llm_review(decoded))}
+        {:ok, decoded, meta} ->
+          {:ok, merge_reviews(heuristic, normalize_llm_review(decoded), meta)}
 
         {:error, reason} ->
           Logger.info("[Skills.Intake] LLM unavailable (#{inspect(reason)}); using heuristics")
@@ -144,7 +144,7 @@ defmodule Acs.Skills.Intake do
     }
   end
 
-  defp merge_reviews(heuristic, llm) do
+  defp merge_reviews(heuristic, llm, meta) do
     questions = merge_questions(heuristic.questions, llm.questions)
 
     %{
@@ -155,7 +155,9 @@ defmodule Acs.Skills.Intake do
       suggested_when_to_use: llm.suggested_when_to_use,
       questions: questions,
       notes: llm.notes || heuristic.notes,
-      source: :llm
+      source: :llm,
+      provider: Map.get(meta, :provider),
+      model: Map.get(meta, :model)
     }
   end
 

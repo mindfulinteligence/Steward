@@ -520,7 +520,9 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
       suggested_visibility: intake.suggested_visibility,
       suggested_title: intake.suggested_title,
       suggested_kind: intake.suggested_kind,
-      notes: intake.notes
+      notes: intake.notes,
+      provider: Map.get(intake, :provider),
+      model: Map.get(intake, :model)
     }
   end
 

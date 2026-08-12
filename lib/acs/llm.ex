@@ -92,7 +92,7 @@ defmodule Acs.LLM do
 
   Returns raw decoded JSON map from the intake prompt.
   """
-  @spec intake_classify(map()) :: {:ok, map()} | {:error, term()}
+  @spec intake_classify(map()) :: {:ok, map(), map()} | {:error, term()}
   def intake_classify(candidate) when is_map(candidate) do
     prompt = build_intake_prompt(candidate)
     providers = get_enabled_providers("intake")
@@ -113,7 +113,7 @@ defmodule Acs.LLM do
 
   Single-pass; returns raw decoded JSON from `skills/intake` prompt.
   """
-  @spec skill_intake_classify(map()) :: {:ok, map()} | {:error, term()}
+  @spec skill_intake_classify(map()) :: {:ok, map(), map()} | {:error, term()}
   def skill_intake_classify(candidate) when is_map(candidate) do
     prompt = build_skill_intake_prompt(candidate)
     providers = get_enabled_providers("skill_intake")
@@ -178,7 +178,10 @@ defmodule Acs.LLM do
       {:error, :no_providers_enabled}
     else
       # call_type = process (auditor), subject_id = memory being evaluated
-      try_providers("memory_audit", providers, prompt, memory_id)
+      case try_providers("memory_audit", providers, prompt, memory_id) do
+        {:ok, evaluation, _meta} -> {:ok, evaluation}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -190,7 +193,10 @@ defmodule Acs.LLM do
     if providers == [] do
       {:error, :no_providers_enabled}
     else
-      try_providers("skill_audit", providers, prompt, skill_name)
+      case try_providers("skill_audit", providers, prompt, skill_name) do
+        {:ok, evaluation, _meta} -> {:ok, evaluation}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -241,7 +247,10 @@ defmodule Acs.LLM do
     if providers == [] do
       {:error, :no_providers_enabled}
     else
-      try_providers("spec_audit", providers, prompt, spec_id)
+      case try_providers("spec_audit", providers, prompt, spec_id) do
+        {:ok, evaluation, _meta} -> {:ok, evaluation}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -283,8 +292,8 @@ defmodule Acs.LLM do
     )
 
     case call_provider(provider_id, prompt, call_type, prompt_chars, subject_id) do
-      {:ok, evaluation} ->
-        {:ok, evaluation}
+      {:ok, evaluation, provider, model} ->
+        {:ok, evaluation, %{provider: provider, model: model}}
 
       {:error, reason} ->
         # call_provider already logged the failure with model/latency — don't double-count.
@@ -337,6 +346,12 @@ defmodule Acs.LLM do
       base_url =
         provider_overrides(provider_id, :base_url)
 
+      used_base_url =
+        case base_url do
+          url when is_binary(url) and url != "" -> url
+          _ -> config.base_url
+        end
+
       opts = [
         model: model,
         api_key: api_key,
@@ -349,67 +364,114 @@ defmodule Acs.LLM do
         enable_metrics: true
       ]
 
-      opts = if base_url, do: Keyword.put(opts, :base_url, base_url), else: opts
+      opts =
+        if is_binary(used_base_url) and used_base_url != "",
+          do: Keyword.put(opts, :base_url, used_base_url),
+          else: opts
 
       started = System.monotonic_time(:millisecond)
 
-      case LLMUtils.Client.chat_completion(messages, config, opts) do
-        {:ok, %{content: content} = response} ->
-          latency_ms = System.monotonic_time(:millisecond) - started
+      try do
+        case LLMUtils.Client.chat_completion(messages, config, opts) do
+          {:ok, %{content: content} = response} ->
+            latency_ms = System.monotonic_time(:millisecond) - started
 
-          Logger.info("[Acs.LLM] Provider #{provider_id} ok",
+            Logger.info("[Acs.LLM] Provider #{provider_id} ok",
+              provider: provider_id,
+              model: model,
+              latency_ms: latency_ms,
+              llm_event: "chat",
+              status: "ok",
+              action: "llm_call",
+              call_type: call_type,
+              subject_id: subject_id,
+              audience: "system",
+              prompt_chars: prompt_chars,
+              tokens_in: llm_usage(response, :input),
+              tokens_out: llm_usage(response, :output)
+            )
+
+            extract_evaluation(content)
+            |> case do
+              {:ok, evaluation} -> {:ok, evaluation, provider_id, model}
+              {:error, reason} -> {:error, reason}
+            end
+
+          {:ok, response} ->
+            latency_ms = System.monotonic_time(:millisecond) - started
+
+            Logger.warning(
+              "[Acs.LLM] Unexpected response format from #{provider_id}: #{inspect(response)}",
+              provider: provider_id,
+              model: model,
+              base_url: used_base_url,
+              latency_ms: latency_ms,
+              llm_event: "chat",
+              status: "error",
+              action: "llm_call",
+              call_type: call_type,
+              subject_id: subject_id,
+              audience: "system",
+              error_type: "unexpected_response_format"
+            )
+
+            {:error, :unexpected_response_format}
+
+          {:error, reason} ->
+            latency_ms = System.monotonic_time(:millisecond) - started
+
+            Logger.warning("[Acs.LLM] Provider #{provider_id} request failed: #{inspect(reason)}",
+              provider: provider_id,
+              model: model,
+              base_url: used_base_url,
+              latency_ms: latency_ms,
+              llm_event: "chat",
+              status: "error",
+              action: "llm_call",
+              call_type: call_type,
+              subject_id: subject_id,
+              audience: "system",
+              error_type: normalize_error_type(reason)
+            )
+
+            {:error, reason}
+        end
+      rescue
+        exception ->
+          Logger.error(
+            "[Acs.LLM] Provider #{provider_id} raised: #{Exception.message(exception)}",
             provider: provider_id,
             model: model,
-            latency_ms: latency_ms,
-            llm_event: "chat",
-            status: "ok",
-            action: "llm_call",
-            call_type: call_type,
-            subject_id: subject_id,
-            audience: "system",
-            prompt_chars: prompt_chars,
-            tokens_in: llm_usage(response, :input),
-            tokens_out: llm_usage(response, :output)
-          )
-
-          extract_evaluation(content)
-
-        {:ok, response} ->
-          latency_ms = System.monotonic_time(:millisecond) - started
-
-          Logger.warning(
-            "[Acs.LLM] Unexpected response format from #{provider_id}: #{inspect(response)}",
-            provider: provider_id,
-            model: model,
-            latency_ms: latency_ms,
+            base_url: used_base_url,
+            latency_ms: System.monotonic_time(:millisecond) - started,
             llm_event: "chat",
             status: "error",
             action: "llm_call",
             call_type: call_type,
             subject_id: subject_id,
             audience: "system",
-            error_type: "unexpected_response_format"
+            error_type: "provider_exception"
           )
 
-          {:error, :unexpected_response_format}
-
-        {:error, reason} ->
-          latency_ms = System.monotonic_time(:millisecond) - started
-
-          Logger.warning("[Acs.LLM] Provider #{provider_id} request failed: #{inspect(reason)}",
+          {:error, {:provider_exception, Exception.message(exception)}}
+      catch
+        kind, reason ->
+          Logger.error(
+            "[Acs.LLM] Provider #{provider_id} exited: #{inspect(reason)}",
             provider: provider_id,
             model: model,
-            latency_ms: latency_ms,
+            base_url: used_base_url,
+            latency_ms: System.monotonic_time(:millisecond) - started,
             llm_event: "chat",
             status: "error",
             action: "llm_call",
             call_type: call_type,
             subject_id: subject_id,
             audience: "system",
-            error_type: normalize_error_type(reason)
+            error_type: "provider_exit"
           )
 
-          {:error, reason}
+          {:error, {:provider_exit, {kind, reason}}}
       end
     end
   end
@@ -456,6 +518,8 @@ defmodule Acs.LLM do
   end
 
   def normalize_error_type({:server_error, status, _}) when status in 500..599, do: "server_error"
+  def normalize_error_type({:provider_exception, _}), do: "provider_exception"
+  def normalize_error_type({:provider_exit, _}), do: "provider_exit"
   def normalize_error_type(reason) when is_atom(reason), do: Atom.to_string(reason)
 
   def normalize_error_type(reason),
@@ -470,19 +534,16 @@ defmodule Acs.LLM do
     end
   end
 
-  # Allow OpenAI-compatible providers to override base_url and model via env vars.
-  # OPENAI_BASE_URL — override the API endpoint (e.g., http://localhost:8000/v1)
-  # OPENAI_MODEL   — override the model name (e.g., gpt-4o-mini, local-model)
-  defp provider_overrides("openai", :base_url),
-    do: System.get_env("OPENAI_BASE_URL") || Application.get_env(:steward_acs, :openai_base_url)
-
+  # Base URLs for openai and openrouter are hardcoded in their provider configs
+  # (LLMUtils.Providers.OpenAI => "https://api.openai.com/v1", the app-side
+  # openrouter config below => "https://openrouter.ai/api/v1"). Only the model is
+  # overridable via env vars — an empty or absent OPENAI_BASE_URL /
+  # OPENROUTER_BASE_URL must never clobber the canonical URL (regression:
+  # "scheme is required for url: /chat/completions").
+  # OPENAI_MODEL      — override the model name (e.g., gpt-4o-mini, local-model)
+  # OPENROUTER_MODEL  — override the model name
   defp provider_overrides("openai", :model),
     do: System.get_env("OPENAI_MODEL") || Application.get_env(:steward_acs, :openai_model)
-
-  defp provider_overrides("openrouter", :base_url),
-    do:
-      System.get_env("OPENROUTER_BASE_URL") ||
-        Application.get_env(:steward_acs, :openrouter_base_url)
 
   defp provider_overrides("openrouter", :model),
     do: System.get_env("OPENROUTER_MODEL") || Application.get_env(:steward_acs, :openrouter_model)

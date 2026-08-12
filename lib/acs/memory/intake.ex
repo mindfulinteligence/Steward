@@ -48,8 +48,8 @@ defmodule Acs.Memory.Intake do
       {:ok, heuristic}
     else
       case LLM.intake_classify(candidate) do
-        {:ok, decoded} ->
-          {:ok, merge_reviews(heuristic, normalize_llm_review(decoded))}
+        {:ok, decoded, meta} ->
+          {:ok, merge_reviews(heuristic, normalize_llm_review(decoded), meta)}
 
         {:error, reason} ->
           Logger.info("[Memory.Intake] LLM unavailable (#{inspect(reason)}); using heuristics")
@@ -159,7 +159,7 @@ defmodule Acs.Memory.Intake do
     }
   end
 
-  defp merge_reviews(heuristic, llm) do
+  defp merge_reviews(heuristic, llm, meta) do
     %{
       about_type: llm.about_type || heuristic.about_type,
       about_name: llm.about_name || heuristic.about_name,
@@ -171,7 +171,9 @@ defmodule Acs.Memory.Intake do
       is_eternal_truth: llm.is_eternal_truth,
       questions: merge_questions(heuristic.questions, llm.questions),
       notes: llm.notes || heuristic.notes,
-      source: :llm
+      source: :llm,
+      provider: Map.get(meta, :provider),
+      model: Map.get(meta, :model)
     }
   end
 

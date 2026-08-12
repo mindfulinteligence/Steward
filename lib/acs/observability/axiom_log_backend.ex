@@ -29,6 +29,7 @@ defmodule Acs.Observability.AxiomLogBackend do
     :agent_name,
     :model,
     :provider,
+    :base_url,
     :tokens_in,
     :tokens_out,
     :tokens_total,

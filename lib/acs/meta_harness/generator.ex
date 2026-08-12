@@ -359,7 +359,7 @@ defmodule Acs.MetaHarness.Generator do
   defp format_feedback("[]"), do: "  _No feedback yet_"
 
   defp format_feedback(feedback) do
-    top_learned = get_top_values(feedback, "most_surprising", 3)
+    top_learned = get_top_values(feedback, "learned_for_agents", 3)
     top_issues = get_top_values(feedback, "most_time_consuming", 3)
 
     # Filter out "no improvements needed" entries
@@ -547,7 +547,7 @@ defmodule Acs.MetaHarness.Generator do
     - Action: if gate count is high, raise the bar in `memory/intake` / `skills/intake` prompts (prefer allow). If `intake_bypass` dominates, gates are false positives.
 
     ### Agent Feedback
-    - Learned: #{Enum.take(data.feedback, 3) |> Enum.map(& &1["most_surprising"]) |> Enum.reject(&is_nil/1) |> Enum.join(", ")}
+    - Learned: #{Enum.take(data.feedback, 3) |> Enum.map(& &1["learned_for_agents"]) |> Enum.reject(&is_nil/1) |> Enum.join(", ")}
     - Issues: #{Enum.take(data.feedback, 3) |> Enum.map(& &1["most_time_consuming"]) |> Enum.reject(&is_nil/1) |> Enum.join(", ")}
     - Requests: #{Enum.take(data.feedback, 3) |> Enum.map(& &1["improvements_needed"]) |> Enum.reject(&is_nil/1) |> Enum.join(", ")}
 

@@ -6,7 +6,7 @@ defmodule Acs.Acs.TaskCompletionFeedback do
     field :task_id, :binary_id
     field :agent_id, :string
     field :org, :string, default: "default"
-    field :most_surprising, :string
+    field :learned_for_agents, :string
     field :most_time_consuming, :string
     field :improvements_needed, :string
     field :tools_wish_list, :string
@@ -24,7 +24,7 @@ defmodule Acs.Acs.TaskCompletionFeedback do
       :task_id,
       :agent_id,
       :org,
-      :most_surprising,
+      :learned_for_agents,
       :most_time_consuming,
       :improvements_needed,
       :tools_wish_list,

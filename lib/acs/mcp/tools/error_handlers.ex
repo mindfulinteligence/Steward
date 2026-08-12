@@ -61,7 +61,7 @@ defmodule Acs.MCP.Tools.ErrorHandlers do
         task_id: task_id,
         agent_id: agent_id,
         org: org,
-        most_surprising: args["learned_for_agents"] || args["most_surprising"],
+        learned_for_agents: args["learned_for_agents"],
         most_time_consuming: args["had_issues"] || args["most_time_consuming"],
         improvements_needed: args["improvements"] || args["improvements_needed"],
         tools_wish_list: args["tools_wish_list"],

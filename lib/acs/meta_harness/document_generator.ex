@@ -102,7 +102,7 @@ defmodule Acs.MetaHarness.DocumentGenerator do
         else
           %{
             total: length(feedback),
-            top_learned: get_top_values(feedback, :most_surprising, 3),
+            top_learned: get_top_values(feedback, :learned_for_agents, 3),
             top_issues: get_top_values(feedback, :most_time_consuming, 3),
             top_improvements: get_top_values(feedback, :improvements_needed, 3),
             guidance_summary: summarize_guidance_data(feedback)
