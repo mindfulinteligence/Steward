@@ -20,7 +20,7 @@ EXPECTED_CHAT_TOOLS="${EXPECTED_CHAT_TOOLS:-}"
 ALLOW_SKIP="${ALLOW_SKIP:-0}"
 SKIP_CODING_CHECK="${SKIP_CODING_CHECK:-0}"
 
-info() { echo "[smoke-chat-tools] $*"; }
+info() { echo "[smoke-chat-tools] $*" >&2; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
 if [[ -z "$SMOKE_API_KEY" ]]; then
