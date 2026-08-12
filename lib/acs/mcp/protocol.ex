@@ -8,6 +8,8 @@ defmodule Acs.MCP.Protocol do
   checks these values against tool-level role and permission requirements.
   """
 
+  require Logger
+
   alias Acs.MCP.ToolRegistry
 
   @mcp_version "2024-11-05"
@@ -203,21 +205,39 @@ defmodule Acs.MCP.Protocol do
       audience = Acs.MCP.ClientSession.resolve_audience(agent_identity)
 
       tools =
-        ToolRegistry.list_tools_mcp(agent_role, agent_org_id, agent_permissions, audience)
+        try do
+          ToolRegistry.list_tools_mcp(agent_role, agent_org_id, agent_permissions, audience)
+        rescue
+          error ->
+            Logger.error(
+              "[Acs.MCP.Protocol] tools/list failed: #{Exception.message(error)}",
+              error_type: "mcp_tools_list_error",
+              org: agent_org_id,
+              agent_id: agent_identity
+            )
 
-      Acs.Observability.AgentOps.log_tools_list(
-        tools: tools,
-        audience: audience,
-        audience_source: Acs.MCP.ClientSession.resolve_audience_source(agent_identity),
-        client_name: Acs.MCP.ClientSession.resolve_client_name(agent_identity),
-        client_version: Acs.MCP.ClientSession.resolve_client_version(agent_identity),
-        mcp_endpoint: Acs.MCP.ClientSession.resolve_mcp_endpoint(agent_identity),
-        role: agent_role,
-        org: agent_org_id,
-        agent_id: agent_identity
-      )
+            {:__mcp_error__, error}
+        end
 
-      {:ok, success_response(id, %{"tools" => tools})}
+      case tools do
+        {:__mcp_error__, _error} ->
+          {:ok, error_response(id, -32603, "Internal error", "tools/list unavailable")}
+
+        tools ->
+          Acs.Observability.AgentOps.log_tools_list(
+            tools: tools,
+            audience: audience,
+            audience_source: Acs.MCP.ClientSession.resolve_audience_source(agent_identity),
+            client_name: Acs.MCP.ClientSession.resolve_client_name(agent_identity),
+            client_version: Acs.MCP.ClientSession.resolve_client_version(agent_identity),
+            mcp_endpoint: Acs.MCP.ClientSession.resolve_mcp_endpoint(agent_identity),
+            role: agent_role,
+            org: agent_org_id,
+            agent_id: agent_identity
+          )
+
+          {:ok, success_response(id, %{"tools" => tools})}
+      end
     else
       {:error, reason} ->
         {:ok, error_response(id, -32001, "Unauthorized", reason)}

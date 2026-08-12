@@ -136,6 +136,31 @@ PY
   die "timed out waiting for JSON-RPC id=${rpc_id} on SSE stream"
 }
 
+# Bounded retry around a full tools/list SSE round-trip so a transient
+# boot-time block in the server (e.g. ToolRegistry warmup) does not fail the
+# cutover job on a one-off 5xx / JSON-RPC error.
+#   LIST_RETRIES        max attempts (default 3)
+#   LIST_RETRY_DELAY    seconds between attempts (default 10)
+run_list_tools() {
+  local path="$1"
+  local client_name="$2"
+  local retries="${LIST_RETRIES:-3}"
+  local delay="${LIST_RETRY_DELAY:-10}"
+  local attempt
+  for attempt in $(seq 1 "$retries"); do
+    info "tools/list via ${path} (attempt ${attempt}/${retries})"
+    if result=$(list_tools_via_sse "$path" "$client_name"); then
+      echo "$result"
+      return 0
+    fi
+    if (( attempt < retries )); then
+      info "tools/list via ${path} failed (attempt ${attempt}); retrying in ${delay}s"
+      sleep "$delay"
+    fi
+  done
+  die "tools/list via ${path} failed after ${retries} attempts"
+}
+
 list_tools_via_sse() {
   local path="$1"
   local client_name="$2"
@@ -189,13 +214,13 @@ PY
 }
 
 info "chat SSE tools/list via ${PUBLIC_URL}/mcp/chat/sse"
-CHAT_RESULT=$(list_tools_via_sse "/mcp/chat/sse" "deploy-smoke-chat")
+CHAT_RESULT=$(run_list_tools "/mcp/chat/sse" "deploy-smoke-chat")
 GOT_NAMES=$(compare_sets "$CHAT_RESULT")
 info "chat tools/list ok (${GOT_NAMES//,/, })"
 
 if [[ "$SKIP_CODING_CHECK" != "1" ]]; then
   info "coding SSE tools/list divergence check"
-  CODING_RESULT=$(list_tools_via_sse "/mcp/coding/sse" "deploy-smoke-coding")
+  CODING_RESULT=$(run_list_tools "/mcp/coding/sse" "deploy-smoke-coding")
   python3 - "$CODING_RESULT" "$EXPECTED_CHAT_TOOLS" <<'PY'
 import json, sys
 result = json.loads(sys.argv[1])

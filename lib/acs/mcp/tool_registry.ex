@@ -6,24 +6,34 @@ defmodule Acs.MCP.ToolRegistry do
 
   @call_timeout 180_000
 
+  # Read-only hot-path calls ride a generous timeout so a transient block in the
+  # registry process (e.g. a slow synchronous :refresh or tool invoke during
+  # boot warmup) resolves instead of crashing callers into HTTP 500.
+  @list_timeout 30_000
+
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   def list_tools(category \\ nil, org \\ Acs.Org.current()),
-    do: GenServer.call(__MODULE__, {:list_tools, category, org})
+    do: GenServer.call(__MODULE__, {:list_tools, category, org}, @list_timeout)
 
   def list_tools_mcp(agent_role, org \\ Acs.Org.current(), permissions \\ nil, audience \\ nil)
 
   def list_tools_mcp(agent_role, org, permissions, audience)
       when is_binary(agent_role) and is_binary(org),
-      do: GenServer.call(__MODULE__, {:list_tools_mcp, agent_role, org, permissions, audience})
+      do:
+        GenServer.call(
+          __MODULE__,
+          {:list_tools_mcp, agent_role, org, permissions, audience},
+          @list_timeout
+        )
 
   def list_tools_mcp(_, _, _, _), do: []
 
   def list_categories(org \\ Acs.Org.current()),
-    do: GenServer.call(__MODULE__, {:list_categories, org})
+    do: GenServer.call(__MODULE__, {:list_categories, org}, @list_timeout)
 
   def get_tool(name, org \\ Acs.Org.current()),
-    do: GenServer.call(__MODULE__, {:get_tool, name, org})
+    do: GenServer.call(__MODULE__, {:get_tool, name, org}, @list_timeout)
 
   @doc "Legacy internal execution API. External MCP callers must use invoke/3."
   def call_tool(name, args) when is_map(args),
