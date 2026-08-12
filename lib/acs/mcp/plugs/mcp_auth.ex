@@ -74,6 +74,7 @@ defmodule Acs.MCP.Plugs.MCPAuth do
               |> assign(:agent_allowed_teams, result[:allowed_teams])
               |> assign(:agent_allowed_projects, result[:allowed_projects])
               |> assign(:agent_identity, result[:agent_identity])
+              |> assign(:agent_kind, result[:kind] || "code")
               |> assign(:agent_authority_level, result[:authority_level_slug])
               |> assign(:agent_authority_sort_order, authority_sort_order)
             else

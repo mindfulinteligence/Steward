@@ -31,6 +31,7 @@ defmodule Acs.Developers do
          %{
            role: dev_key.role,
            org: dev_key.org,
+           kind: dev_key.kind || "code",
            developer_name: dev_key.developer_name,
            authority_level_slug: dev_key.authority_level_slug || "standard",
            allowed_teams: decode_json(dev_key.allowed_teams_json),
@@ -51,6 +52,7 @@ defmodule Acs.Developers do
     role = Keyword.get(opts, :role, "collaborator")
     org = Keyword.get(opts, :org) || Keyword.get(opts, :cluster, "default")
     authority_level_slug = Keyword.get(opts, :authority_level_slug, "standard")
+    kind = Keyword.get(opts, :kind, "code")
     allowed_teams = Keyword.get(opts, :allowed_teams)
     allowed_projects = Keyword.get(opts, :allowed_projects)
 
@@ -66,6 +68,7 @@ defmodule Acs.Developers do
            role: role,
            org: org,
            authority_level_slug: authority_level_slug,
+           kind: kind,
            active: true,
            allowed_teams_json: encode_json(allowed_teams),
            allowed_projects_json: encode_json(allowed_projects)

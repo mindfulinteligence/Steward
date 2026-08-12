@@ -23,7 +23,8 @@ defmodule AcsWeb.AcsLive.SettingsLive do
         local_identity?: not Acs.Org.multi_tenant?(),
         developer_name: Acs.Org.usable_developer_name() || "",
         name_form: to_form(%{"name" => Acs.Org.usable_developer_name() || ""}, as: :identity),
-        key_form: to_form(%{"name" => Acs.Org.usable_developer_name() || ""}, as: :key),
+        key_form:
+          to_form(%{"name" => Acs.Org.usable_developer_name() || "", "kind" => "code"}, as: :key),
         minted_key: nil,
         developers: list_dev_keys()
       )
@@ -106,14 +107,15 @@ defmodule AcsWeb.AcsLive.SettingsLive do
     end
   end
 
-  def handle_event("mint-developer-key", %{"key" => %{"name" => name}}, socket) do
+  def handle_event("mint-developer-key", %{"key" => %{"name" => name, "kind" => kind}}, socket) do
     if socket.assigns.is_admin do
       name = String.trim(name || "")
+      kind = if kind in ["code", "chat"], do: kind, else: "code"
 
       if name == "" do
         {:noreply, put_flash(socket, :error, "Name is required for a developer key.")}
       else
-        case Developers.generate_key(name, role: "admin", org: Acs.Org.current()) do
+        case Developers.generate_key(name, role: "admin", org: Acs.Org.current(), kind: kind) do
           {:ok, %{key: raw_key, developer: dev}} ->
             _ = if socket.assigns.local_identity?, do: Acs.Org.set_developer_name(name)
 
@@ -123,12 +125,12 @@ defmodule AcsWeb.AcsLive.SettingsLive do
                minted_key: raw_key,
                developers: list_dev_keys(),
                developer_name: Acs.Org.usable_developer_name() || name,
-               key_form: to_form(%{"name" => name}, as: :key),
+               key_form: to_form(%{"name" => name, "kind" => kind}, as: :key),
                name_form: to_form(%{"name" => name}, as: :identity)
              )
              |> put_flash(
                :info,
-               "Key created for #{dev.developer_name}. Copy it now — it will not be shown again. Put it in Cursor mcp.json as x-api-key (prod coding path)."
+               "#{kind} key created for #{dev.developer_name}. Copy it now — it will not be shown again. Put it in your MCP client as x-api-key (prod #{kind} path)."
              )}
 
           {:error, reason} ->
@@ -222,6 +224,27 @@ defmodule AcsWeb.AcsLive.SettingsLive do
               />
               <button type="submit" class="btn btn-copy">Generate key</button>
             </div>
+
+            <div style="display: flex; gap: 16px; margin-top: 12px;">
+              <label style="display: flex; gap: 6px; align-items: center; font-size: 0.8rem;">
+                <input
+                  type="radio"
+                  name={@key_form[:kind].name}
+                  value="code"
+                  checked={@key_form[:kind].value == "code"}
+                />
+                Code
+              </label>
+              <label style="display: flex; gap: 6px; align-items: center; font-size: 0.8rem;">
+                <input
+                  type="radio"
+                  name={@key_form[:kind].name}
+                  value="chat"
+                  checked={@key_form[:kind].value == "chat"}
+                />
+                Chat
+              </label>
+            </div>
           </.form>
 
           <%= if @minted_key do %>
@@ -247,7 +270,7 @@ defmodule AcsWeb.AcsLive.SettingsLive do
               <%= for dev <- @developers do %>
                 <li style="padding: 4px 0;">
                   <strong style="color: var(--text);"><%= dev.developer_name %></strong>
-                  · <%= dev.role %> · <code><%= dev.key_prefix %>…</code>
+                  · <%= dev.role %> · <%= dev.kind || "code" %> · <code><%= dev.key_prefix %>…</code>
                 </li>
               <% end %>
             </ul>

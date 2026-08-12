@@ -547,8 +547,15 @@ defmodule Acs.MCP.HTTPServer do
 
       _ ->
         if endpoint do
-          Acs.MCP.ClientSession.seed_mcp_connect(session_id, endpoint, :coding)
+          Acs.MCP.ClientSession.seed_mcp_connect(session_id, endpoint, key_kind_audience(conn))
         end
+    end
+  end
+
+  defp key_kind_audience(conn) do
+    case conn.assigns[:agent_kind] do
+      "chat" -> :chat
+      _ -> :coding
     end
   end
 
@@ -568,7 +575,7 @@ defmodule Acs.MCP.HTTPServer do
       _ ->
         # Still record the connect path for provenance when URL does not force audience.
         if endpoint do
-          Acs.MCP.ClientSession.seed_mcp_connect(session_id, endpoint, :coding)
+          Acs.MCP.ClientSession.seed_mcp_connect(session_id, endpoint, key_kind_audience(conn))
         end
     end
 

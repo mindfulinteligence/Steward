@@ -17,6 +17,7 @@ defmodule Acs.Developers.DeveloperApiKey do
     field :role, :string, default: "collaborator"
     field :org, :string, default: "default"
     field :authority_level_slug, :string, default: "standard"
+    field :kind, :string, default: "code"
     field :active, :boolean, default: true
     field :last_used_at, :utc_datetime
     field :allowed_teams_json, :string
@@ -33,6 +34,7 @@ defmodule Acs.Developers.DeveloperApiKey do
       :role,
       :org,
       :authority_level_slug,
+      :kind,
       :active,
       :last_used_at,
       :allowed_teams_json,
@@ -40,6 +42,7 @@ defmodule Acs.Developers.DeveloperApiKey do
     ])
     |> validate_required([:key_hash, :developer_name])
     |> validate_inclusion(:role, ~w(admin service reader collaborator))
+    |> validate_inclusion(:kind, ~w(code chat))
     |> validate_length(:developer_name, min: 1, max: 100)
   end
 end

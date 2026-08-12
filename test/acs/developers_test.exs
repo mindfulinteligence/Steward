@@ -36,6 +36,16 @@ defmodule Acs.DevelopersTest do
       prefix = String.slice(raw_key, 0, 12)
       assert dev.key_prefix == prefix
     end
+
+    test "defaults to code kind" do
+      {:ok, %{developer: dev}} = Developers.generate_key("kind-default-test")
+      assert dev.kind == "code"
+    end
+
+    test "accepts kind option" do
+      {:ok, %{developer: dev}} = Developers.generate_key("kind-chat-test", kind: "chat")
+      assert dev.kind == "chat"
+    end
   end
 
   describe "authenticate/1" do
@@ -44,6 +54,11 @@ defmodule Acs.DevelopersTest do
         Developers.generate_key("auth-test", role: "admin", org: "staging")
 
       assert {:ok, %{role: "admin", org: "staging"}} = Developers.authenticate(raw_key)
+    end
+
+    test "returns kind on valid key" do
+      {:ok, %{key: raw_key}} = Developers.generate_key("auth-kind-test", kind: "chat")
+      assert {:ok, %{kind: "chat"}} = Developers.authenticate(raw_key)
     end
 
     test "returns error on invalid key" do

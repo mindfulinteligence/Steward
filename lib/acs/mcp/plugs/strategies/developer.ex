@@ -35,6 +35,7 @@ defmodule Acs.MCP.Plugs.Strategies.Developer do
                role: result.role,
                org_id: key_org,
                permissions: [],
+               kind: result[:kind] || "code",
                agent_identity: result.developer_name,
                authority_level_slug: result[:authority_level_slug] || "standard",
                allowed_teams: result[:allowed_teams],

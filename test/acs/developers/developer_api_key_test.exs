@@ -7,7 +7,8 @@ defmodule Acs.Developers.DeveloperApiKeyTest do
     key_hash: "abc123",
     developer_name: "Test Dev",
     role: "admin",
-    cluster: "dev"
+    cluster: "dev",
+    kind: "code"
   }
 
   describe "changeset/2" do
@@ -53,6 +54,30 @@ defmodule Acs.Developers.DeveloperApiKeyTest do
 
       assert changeset.valid?
       assert get_field(changeset, :role) == "collaborator"
+    end
+
+    test "defaults kind to code" do
+      changeset =
+        DeveloperApiKey.changeset(%DeveloperApiKey{}, %{
+          key_hash: "hash",
+          developer_name: "kind-default-test"
+        })
+
+      assert get_field(changeset, :kind) == "code"
+    end
+
+    test "validates kind inclusion" do
+      changeset =
+        DeveloperApiKey.changeset(%DeveloperApiKey{}, %{@valid_attrs | kind: "agent"})
+
+      refute changeset.valid?
+    end
+
+    test "accepts code and chat kinds" do
+      for kind <- ~w(code chat) do
+        changeset = DeveloperApiKey.changeset(%DeveloperApiKey{}, %{@valid_attrs | kind: kind})
+        assert changeset.valid?, "kind #{kind} should be valid"
+      end
     end
   end
 end

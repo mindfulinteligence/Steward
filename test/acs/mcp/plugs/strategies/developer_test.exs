@@ -21,7 +21,15 @@ defmodule Acs.MCP.Plugs.Strategies.DeveloperTest do
 
       conn = build_conn()
       # Developer strategy maps cluster to org_id
-      assert {:ok, %{role: "admin", org_id: "dev"}} = Developer.authenticate(raw_key, conn)
+      assert {:ok, %{role: "admin", org_id: "dev", kind: "code"}} = Developer.authenticate(raw_key, conn)
+    end
+
+    test "returns chat kind for chat keys" do
+      {:ok, %{key: raw_key}} =
+        Developers.generate_key("strategy-chat-test", role: "admin", cluster: "dev", kind: "chat")
+
+      conn = build_conn()
+      assert {:ok, %{kind: "chat"}} = Developer.authenticate(raw_key, conn)
     end
 
     test "rejects invalid key" do
