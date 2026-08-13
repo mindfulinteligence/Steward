@@ -371,6 +371,7 @@ defmodule Acs.LLM do
         api_key: api_key,
         json_mode: config.supports_json_mode,
         suppress_thinking: Map.get(config, :suppress_thinking, false),
+        reasoning_effort: Map.get(config, :reasoning_effort),
         max_tokens: 4096,
         temperature: 0.0,
         enable_rate_limiter: true,
@@ -582,7 +583,8 @@ defmodule Acs.LLM do
       rate_limit: nil,
       rate_window_ms: 60_000,
       models: ["deepseek/deepseek-4-flash"],
-      suppress_thinking: true
+      suppress_thinking: true,
+      reasoning_effort: :none
     }
   }
 

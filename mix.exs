@@ -48,7 +48,7 @@ defmodule Acs.MixProject do
       {:postgrex, "~> 0.19", only: [:prod]},
       {:jason, "~> 1.2"},
       {:req, "~> 0.6.3"},
-      {:llm_utils, "~> 0.1.1"},
+      {:llm_utils, github: "NaharEmet/llm_utils_elixir", branch: "main"},
       {:dotenvy, "~> 1.0", override: true},
       {:yaml_elixir, "~> 2.9"},
       {:bandit, "~> 1.5"},
