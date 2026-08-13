@@ -9,6 +9,8 @@ defmodule Acs.MetaHarness.AnalyzerTest do
   alias Acs.MetaHarness.RecentOps
 
   setup do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Acs.Repo)
+    Ecto.Adapters.SQL.Sandbox.mode(Acs.Repo, {:shared, self()})
     RecentOps.setup()
     RecentOps.clear()
     on_exit(fn -> RecentOps.clear() end)
