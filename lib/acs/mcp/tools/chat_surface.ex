@@ -24,6 +24,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
     "list_tasks" => {"steward_ask", "action", "list_tasks"},
     "save_memory" => {"steward_write", "kind", "memory"},
     "set_memory_status" => {"steward_write", "kind", "memory_status"},
+    "update_memory" => {"steward_write", "kind", "memory_update"},
     "documents_propose" => {"steward_write", "kind", "document"},
     "skill_save" => {"steward_write", "kind", "skill"},
     "set_person_status" => {"steward_write", "kind", "person_status"},
@@ -158,6 +159,9 @@ defmodule Acs.MCP.Tools.ChatSurface do
       "set_memory_status" ->
         MemoryHandlers.set_memory_status(routed_args)
 
+      "update_memory" ->
+        MemoryHandlers.update_memory(routed_args)
+
       "set_person_status" ->
         PersonHandlers.set_person_status(routed_args)
 
@@ -202,6 +206,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
       "document" -> "documents_propose"
       "skill" -> "skill_save"
       "memory_status" -> "set_memory_status"
+      "memory_update" -> "update_memory"
       "person_status" -> "set_person_status"
       "feedback" -> "submit_task_feedback"
       _ -> nil
@@ -271,6 +276,7 @@ defmodule Acs.MCP.Tools.ChatSurface do
         branch(document_properties(), ["kind", "app", "path"]),
         branch(skill_save_properties(), ["kind", "name", "content"]),
         branch(memory_status_properties(), ["kind", "memory_id", "status"]),
+        branch(memory_update_properties(), ["kind", "memory_id"]),
         branch(person_set_properties(), ["kind", "status"]),
         branch(feedback_properties(), ["kind"])
       ]
@@ -450,6 +456,25 @@ defmodule Acs.MCP.Tools.ChatSurface do
       "memory_id" => string("Memory ID"),
       "status" => %{"type" => "string", "enum" => ["stale", "deprecated"]},
       "notes" => string("Reason for the status change")
+    }
+  end
+
+  defp memory_update_properties do
+    %{
+      "kind" => enum("memory_update"),
+      "memory_id" => string("Memory ID (preferred)"),
+      "title" =>
+        string(
+          "Resolve by exact title (with scope_path) when memory_id omitted; otherwise updatable"
+        ),
+      "scope_path" => string("Scope for title resolution"),
+      "content" => string("New full markdown content"),
+      "summary" => string("New brief summary"),
+      "importance" => integer("New importance 1-5"),
+      "tags" => strings("New tags"),
+      "triggers" => strings("New trigger events"),
+      "failure_modes" => strings("New known failure scenarios"),
+      "related_memories" => strings("New related memory IDs")
     }
   end
 

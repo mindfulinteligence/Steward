@@ -26,6 +26,7 @@ defmodule Acs.MCP.Tools.ChatSurfaceTest do
       "document" => "documents_propose",
       "skill" => "skill_save",
       "memory_status" => "set_memory_status",
+      "memory_update" => "update_memory",
       "person_status" => "set_person_status",
       "feedback" => "submit_task_feedback"
     }

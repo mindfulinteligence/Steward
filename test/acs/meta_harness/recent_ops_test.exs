@@ -48,4 +48,16 @@ defmodule Acs.MetaHarness.RecentOpsTest do
 
     assert Enum.sort(RecentOps.orgs()) == ["anantha", "default"]
   end
+
+  test "Table GenServer owns the ETS table so it survives creator crashes" do
+    # Drop the table the setup block created (owned by this test process) so
+    # the Table GenServer becomes the owner, as it does on real boot.
+    :ets.delete(:acs_meta_recent_ops)
+
+    {:ok, table_pid} = RecentOps.Table.start_link()
+    assert :ets.info(:acs_meta_recent_ops, :owner) == table_pid
+
+    RecentOps.record(%{tool_name: "ask", status: "success", latency_ms: 10})
+    assert RecentOps.orgs() != []
+  end
 end

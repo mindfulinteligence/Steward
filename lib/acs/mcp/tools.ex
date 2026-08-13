@@ -44,6 +44,7 @@ defmodule Acs.MCP.Tools do
     "set_person_status" => "knowledge",
     "list_authority_levels" => "knowledge",
     "set_memory_status" => "knowledge",
+    "update_memory" => "knowledge",
     "generate_guidance_packet" => "knowledge",
     "ask" => "knowledge",
     # Specs tools
@@ -671,6 +672,59 @@ defmodule Acs.MCP.Tools do
         ["memory_id", "status"]
       ),
       tool_def(
+        "update_memory",
+        "Replace fields on an existing memory (database-backed, append-only ledger — no filesystem setup needed). Resolve the memory by `memory_id` (from a save_memory/query_memories result) or by `title` (optionally plus `scope_path`). Only the provided fields are replaced; content and provenance (create/revise revision history, actor) are preserved. Requires edit permission for the memory. No create fallback — if the memory does not exist, the call errors.",
+        %{
+          "memory_id" => %{
+            "type" => "string",
+            "description" =>
+              "Memory ID to update (preferred). Safe public handle from save_memory/query_memories."
+          },
+          "title" => %{
+            "type" => "string",
+            "description" =>
+              "Resolve by exact title (optionally with scope_path) when memory_id is omitted. Also updatable when memory_id is given."
+          },
+          "scope_path" => %{
+            "type" => "string",
+            "description" => "Scope for title resolution, e.g. acme/sales/pricing or lib/acs"
+          },
+          "content" => %{
+            "type" => "string",
+            "description" => "New full markdown content (replaces existing content)"
+          },
+          "summary" => %{
+            "type" => "string",
+            "description" => "New brief summary"
+          },
+          "importance" => %{
+            "type" => "integer",
+            "description" => "New importance 1-5"
+          },
+          "tags" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "New tags"
+          },
+          "triggers" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "New trigger events"
+          },
+          "failure_modes" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "New known failure scenarios and handling"
+          },
+          "related_memories" => %{
+            "type" => "array",
+            "items" => %{"type" => "string"},
+            "description" => "New related memory IDs"
+          }
+        },
+        []
+      ),
+      tool_def(
         "generate_guidance_packet",
         "Generate an audience-specific guidance packet for a scope.\n\nTwo completely different shapes (not the same map with blanks):\n- coding/mcp — workflow, file locks, tool refs, code specs\n- chat/knowledge — retrieve/answer/save; store + honesty; no locks\n\nScopes: business domains (acme/support/refunds) OR code paths. Defaults from MCP session audience (clientInfo).",
         %{
@@ -1191,6 +1245,7 @@ defmodule Acs.MCP.Tools do
     "delete_authority_level" => &AuthorityHandlers.delete_authority_level/1,
     "set_member_authority_level" => &AuthorityHandlers.set_member_authority_level/1,
     "set_memory_status" => &MemoryHandlers.set_memory_status/1,
+    "update_memory" => &MemoryHandlers.update_memory/1,
     "generate_guidance_packet" => &MemoryHandlers.generate_guidance_packet/1,
     "ask" => &QueryAgent.ask/1,
     "list_error_traces" => &ErrorHandlers.list_error_traces/1,
@@ -1745,6 +1800,15 @@ defmodule Acs.MCP.Tools do
             %{
               tool: "query_memories",
               prompt: "Verify the updated memory appears correctly",
+              params: %{scope_path: Map.get(args, "scope_path", "")}
+            }
+          ]
+
+        "update_memory" ->
+          [
+            %{
+              tool: "query_memories",
+              prompt: "Verify the updated memory reflects the changes",
               params: %{scope_path: Map.get(args, "scope_path", "")}
             }
           ]

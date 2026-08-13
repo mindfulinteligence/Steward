@@ -38,7 +38,7 @@ defmodule Acs.MetaHarness.AnalyzerPartialFallbackTest do
       [@db_tool, "success", 100, "default", now]
     )
 
-    result = Analyzer.analyze(timeframe: :last_24_hours, org: "default")
+    result = Analyzer.analyze(timeframe: :last_24_hours, org: "default", min_sample_size: 1)
 
     assert Map.has_key?(result.tool_reliability, @db_tool)
     assert Map.has_key?(result.tool_reliability, @ets_tool)

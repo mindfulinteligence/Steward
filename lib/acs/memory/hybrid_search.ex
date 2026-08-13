@@ -3,7 +3,7 @@ defmodule Acs.Memory.HybridSearch do
   Hybrid search combining lexical, semantic, scope, and metadata signals.
 
   Scoring components (each 0.0–1.0):
-  - Lexical: LIKE substring tiers (title/summary/content)
+  - Lexical: tokenized substring coverage (title/summary/content)
   - Semantic: cosine similarity of Ollama embeddings
   - Scope: exact / parent / sibling heuristics
   - Metadata: importance + status
@@ -255,19 +255,51 @@ defmodule Acs.Memory.HybridSearch do
     {lexical_results, semantic_scores}
   end
 
+  # Tokenized lexical scoring: split the query into meaningful tokens and score
+  # by how much of the query appears in each field. Title is the strongest
+  # signal; majority title coverage earns the 0.7 floor so multi-token queries
+  # that mostly land in the title survive the min_score filter. Whole-phrase
+  # matching is preserved when the query yields no meaningful tokens (all
+  # stopwords / too-short).
   defp compute_lexical_score(memory, query) do
-    query_lower = String.downcase(query)
+    tokens = lexical_tokens(query)
 
-    title_match = String.contains?(String.downcase(memory.title), query_lower)
-    content_match = String.contains?(String.downcase(memory.content || ""), query_lower)
-    summary_match = String.contains?(String.downcase(memory.summary || ""), query_lower)
+    if tokens == [] do
+      0.0
+    else
+      title = String.downcase(memory.title)
+      content = String.downcase(memory.content || "")
+      summary = String.downcase(memory.summary || "")
+      total = length(tokens)
 
-    cond do
-      title_match && summary_match -> 0.9
-      title_match -> 0.7
-      content_match -> 0.5
-      summary_match -> 0.4
-      true -> 0.0
+      title_cov = Enum.count(tokens, &String.contains?(title, &1)) / total
+
+      body_cov =
+        max(
+          Enum.count(tokens, &String.contains?(content, &1)),
+          Enum.count(tokens, &String.contains?(summary, &1))
+        ) / total
+
+      cond do
+        title_cov == 1.0 and body_cov == 1.0 -> 0.9
+        title_cov >= 0.5 -> 0.7
+        body_cov == 1.0 -> 0.5
+        title_cov > 0 or body_cov > 0 -> 0.35
+        true -> 0.0
+      end
+    end
+  end
+
+  defp lexical_tokens(query) when is_binary(query) do
+    case Acs.ClaimContext.meaningful_tokens(query) do
+      [] ->
+        case String.downcase(String.trim(query)) do
+          "" -> []
+          single -> [single]
+        end
+
+      tokens ->
+        tokens
     end
   end
 

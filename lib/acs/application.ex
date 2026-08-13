@@ -37,8 +37,12 @@ defmodule Acs.Application do
     meta_harness_children =
       if Acs.MetaHarness.enabled?() and
            Application.get_env(:steward_acs, :start_background_workers, true) do
-        _ = Acs.MetaHarness.RecentOps.setup()
-        [Acs.MetaHarness.OperationLogger, Acs.MetaHarness.Scheduler]
+        [
+          # Owns the RecentOps ETS table so it survives short-lived creators crashing.
+          Acs.MetaHarness.RecentOps.Table,
+          Acs.MetaHarness.OperationLogger,
+          Acs.MetaHarness.Scheduler
+        ]
       else
         []
       end

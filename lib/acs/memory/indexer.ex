@@ -461,16 +461,13 @@ defmodule Acs.Memory.Indexer do
   def search(query_text, opts \\ []) do
     import Ecto.Query
 
-    search_term = "%#{query_text}%"
+    search_clause = build_token_search_clause(query_text)
     org = opts[:org] || Acs.Org.current()
 
     search_query =
       from m in Schema,
         where: m.org == ^org,
-        where:
-          like(m.title, ^search_term) or
-            like(m.content, ^search_term) or
-            like(m.summary, ^search_term)
+        where: ^search_clause
 
     search_query = apply_scope_path_filter(search_query, opts[:scope_path])
     search_query = apply_repo_filter(search_query, opts)
@@ -507,6 +504,27 @@ defmodule Acs.Memory.Indexer do
     search_query = build_abac_filter(search_query, opts)
 
     Repo.all(search_query)
+  end
+
+  # Tokenized LIKE matching: split the query into meaningful tokens and match
+  # any token in title/content/summary, so multi-keyword queries (e.g. from
+  # LLM-structured prompts) recall memories that contain some of the words.
+  # Falls back to whole-phrase LIKE when tokenization yields nothing.
+  defp build_token_search_clause(query_text) when is_binary(query_text) do
+    import Ecto.Query
+
+    tokens = Acs.ClaimContext.meaningful_tokens(query_text)
+    patterns = if tokens == [], do: [query_text], else: Enum.map(tokens, &"%#{&1}%")
+
+    Enum.reduce(patterns, false, fn pattern, acc ->
+      pattern_clause =
+        dynamic(
+          [m],
+          like(m.title, ^pattern) or like(m.content, ^pattern) or like(m.summary, ^pattern)
+        )
+
+      if acc == false, do: pattern_clause, else: dynamic([], ^acc or ^pattern_clause)
+    end)
   end
 
   @doc """

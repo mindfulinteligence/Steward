@@ -26,8 +26,21 @@ defmodule Acs.MetaHarness.AnalyzerOrgTest do
       )
     end
 
-    a = Analyzer.analyze(timeframe: :last_24_hours, org: "org-a", ets_fallback: false)
-    b = Analyzer.analyze(timeframe: :last_24_hours, org: "org-b", ets_fallback: false)
+    a =
+      Analyzer.analyze(
+        timeframe: :last_24_hours,
+        org: "org-a",
+        ets_fallback: false,
+        min_sample_size: 1
+      )
+
+    b =
+      Analyzer.analyze(
+        timeframe: :last_24_hours,
+        org: "org-b",
+        ets_fallback: false,
+        min_sample_size: 1
+      )
 
     assert Map.has_key?(a.tool_reliability, @tool)
     assert Map.has_key?(b.tool_reliability, @tool)

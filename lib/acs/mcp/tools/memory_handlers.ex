@@ -17,6 +17,9 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
     hybrid search (semantic + FTS); otherwise lists memories with filters
   - `set_memory_status/1` — Updates memory status (approved, rejected,
     stale, deprecated)
+  - `update_memory/1` — Replaces fields on an existing memory (resolved by
+    memory id or title/scope) via `Acs.Memory.Store.revise/3`, keeping full
+    ledger provenance; ABAC-gated, no create fallback
   - `generate_guidance_packet/1` — Generates structured guidance for a
     scope path or task ID
 
@@ -303,6 +306,128 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
 
       {:error, reason} ->
         {:error, "Failed to update memory status: #{inspect(reason)}"}
+    end
+  end
+
+  def update_memory(args) do
+    ctx = Acs.Abac.from_args(args)
+    org = Acs.Org.current()
+
+    with {:ok, {existing, public_id}} <- resolve_memory_for_update(args, org),
+         :ok <- authorize_memory_update(ctx, existing) do
+      patch =
+        args
+        |> memory_update_patch()
+        |> drop_title_patch(not is_binary(args["memory_id"]))
+
+      if patch == %{} do
+        {:error,
+         "Nothing to update: provide at least one of title, content, summary, importance, tags, triggers, failure_modes, related_memories"}
+      else
+        actor_id = args["_auth_attribution"] || args["_auth_agent_id"] || "unknown"
+
+        actor_type =
+          if is_binary(actor_id) and String.contains?(actor_id, "@"),
+            do: "user",
+            else: "developer_key"
+
+        revise_memory(public_id, patch, actor_type, actor_id)
+      end
+    end
+  end
+
+  defp resolve_memory_for_update(args, org) do
+    case args["memory_id"] do
+      id when is_binary(id) and id != "" ->
+        case Acs.Memory.Indexer.get_memory(id, org) do
+          nil -> {:error, "Memory not found: #{id}"}
+          schema -> {:ok, {schema, id}}
+        end
+
+      _ ->
+        resolve_memory_by_title(args, org)
+    end
+  end
+
+  defp resolve_memory_by_title(args, org) do
+    case args["title"] do
+      title when is_binary(title) and title != "" ->
+        scope_path = args["scope_path"]
+        title_lower = String.downcase(title)
+
+        matches =
+          Acs.Memory.Indexer.list_memories(scope_path: scope_path, org: org)
+          |> Enum.filter(fn m ->
+            (is_nil(scope_path) or m.scope_path == scope_path) and
+              String.downcase(m.title) == title_lower
+          end)
+
+        case matches do
+          [schema] ->
+            {:ok, {schema, Acs.Memory.Indexer.public_id(schema.id, schema.org)}}
+
+          [] ->
+            scope_msg = if scope_path, do: " at scope '#{scope_path}'", else: ""
+            {:error, "Memory not found with title '#{title}'#{scope_msg}"}
+
+          _ ->
+            {:error,
+             "Multiple memories match title '#{title}'. Provide memory_id (or scope_path) to disambiguate."}
+        end
+
+      _ ->
+        {:error,
+         "Provide memory_id, or title (with optional scope_path) to locate the memory to update."}
+    end
+  end
+
+  defp authorize_memory_update(ctx, existing) do
+    if Acs.Abac.can_edit?(ctx, existing) do
+      :ok
+    else
+      {:error, "Access denied: cannot edit memories at or above your clearance"}
+    end
+  end
+
+  defp memory_update_patch(args) do
+    allowed = ~w(title content summary importance tags triggers failure_modes related_memories)
+
+    Enum.reduce(allowed, %{}, fn key, acc ->
+      case Map.get(args, key) do
+        nil -> acc
+        value -> Map.put(acc, key, normalize_update_value(key, value))
+      end
+    end)
+  end
+
+  defp normalize_update_value(key, value) when key in ~w(tags triggers failure_modes),
+    do: coerce_string_list(value)
+
+  defp normalize_update_value(_key, value), do: value
+
+  defp drop_title_patch(patch, true), do: Map.delete(patch, "title")
+  defp drop_title_patch(patch, false), do: patch
+
+  defp revise_memory(memory_id, patch, actor_type, actor_id) do
+    changed_fields = Map.keys(patch)
+
+    case Acs.Memory.Store.revise(memory_id, patch,
+           org: Acs.Org.current(),
+           actor: %{type: actor_type, id: actor_id},
+           source: "mcp",
+           message: "Revise memory #{memory_id}"
+         ) do
+      {:ok, %{memory: memory}} ->
+        {:ok,
+         %{
+           id: memory.id,
+           status: memory.status,
+           changed_fields: changed_fields,
+           message: "Memory updated"
+         }}
+
+      {:error, reason} ->
+        {:error, "Failed to update memory: #{inspect(reason)}"}
     end
   end
 

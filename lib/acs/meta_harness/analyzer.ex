@@ -30,8 +30,9 @@ defmodule Acs.MetaHarness.Analyzer do
   def analyze(opts \\ []) do
     timeframe = Keyword.get(opts, :timeframe, :last_24_hours)
     org = Keyword.get(opts, :org, Acs.Org.current())
-    # Sparse prod traffic — 1 sample is enough to ship meta.tool (was 5).
-    min_sample = Keyword.get(opts, :min_sample_size, 1)
+    # Sparse prod traffic — 3 samples minimum for statistically meaningful stats
+    # (a single call would make reliability/latency noise, not signal).
+    min_sample = Keyword.get(opts, :min_sample_size, 3)
     min_cluster = Keyword.get(opts, :min_cluster_size, 2)
 
     {start_time, end_time} = calculate_time_range(timeframe)
@@ -118,6 +119,9 @@ defmodule Acs.MetaHarness.Analyzer do
   defp merge_ets_for_tools(analysis, ets, missing_tools) do
     missing = MapSet.new(missing_tools)
     tool_filter = fn row -> Map.fetch!(row, :tool_name) in missing end
+    # Dedup clusters by (tool, error_type) so the same cluster present in both
+    # DB and RecentOps is counted once, not inflated by the merge.
+    cluster_key = fn row -> {row.tool_name, row.error_type} end
 
     %{
       analysis
@@ -125,9 +129,16 @@ defmodule Acs.MetaHarness.Analyzer do
           Map.merge(analysis.tool_reliability, Map.take(ets.tool_reliability, missing_tools)),
         latency_analysis:
           Map.merge(analysis.latency_analysis, Map.take(ets.latency_analysis, missing_tools)),
-        error_clusters: analysis.error_clusters ++ Enum.filter(ets.error_clusters, tool_filter),
+        error_clusters:
+          Enum.uniq_by(
+            analysis.error_clusters ++ Enum.filter(ets.error_clusters, tool_filter),
+            cluster_key
+          ),
         intake_friction:
-          analysis.intake_friction ++ Enum.filter(ets.intake_friction, tool_filter),
+          Enum.uniq_by(
+            analysis.intake_friction ++ Enum.filter(ets.intake_friction, tool_filter),
+            cluster_key
+          ),
         agent_behavior: Map.merge(ets.agent_behavior, analysis.agent_behavior)
     }
   end

@@ -404,6 +404,11 @@ defmodule Acs.MemorySystemTest do
       assert results != []
     end
 
+    test "matches multi-keyword queries whose words are spread across fields" do
+      results = Search.search("release ordering invalidation")
+      assert Enum.any?(results, fn m -> m.id == "search_temporal_001" end)
+    end
+
     test "returns empty list for non-matching search" do
       results = Search.search("xyznonexistentkeyword12345")
       assert results == []

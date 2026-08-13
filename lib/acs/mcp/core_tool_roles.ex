@@ -60,6 +60,7 @@ defmodule Acs.MCP.CoreToolRoles do
     save_memory
     query_memories
     set_memory_status
+    update_memory
     get_person_status
     set_person_status
     list_authority_levels

@@ -90,6 +90,32 @@ defmodule Acs.Memory.HybridSearchTest do
       cleanup_test_memories("test_hybrid_weak")
     end
 
+    test "tokenized scoring keeps multi-word queries whose words mostly cover the title", %{
+      org: org,
+      zero_embedding: embedding
+    } do
+      setup_test_memories("test_hybrid_tokens")
+
+      memory = Acs.Memory.Indexer.get_memory("test_hybrid_tokens")
+
+      refute String.contains?(memory.title, "cache release ordering allocation")
+
+      result =
+        HybridSearch.search("cache release ordering allocation",
+          limit: 10,
+          org: org,
+          embedding: embedding,
+          log_search: false
+        )
+
+      assert Enum.any?(
+               result.results,
+               &memory_id_matches?(&1.memory_id, "test_hybrid_tokens")
+             )
+    after
+      cleanup_test_memories("test_hybrid_tokens")
+    end
+
     test "keeps title matches even when weighted total is under min_score", %{
       org: org,
       zero_embedding: embedding

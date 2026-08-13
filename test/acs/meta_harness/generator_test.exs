@@ -63,15 +63,18 @@ defmodule Acs.MetaHarness.GeneratorTest do
     end
 
     test "analyzes ops recorded under a non-configured org (RecentOps discovery)" do
-      RecentOps.record(%{
-        tool_name: "ask",
-        status: "success",
-        latency_ms: 10,
-        error_type: nil,
-        error_message: nil,
-        agent_id: "email|x",
-        org: "anantha"
-      })
+      # 3 ops so the tool clears the default min_sample_size (3) threshold.
+      for i <- 1..3 do
+        RecentOps.record(%{
+          tool_name: "ask",
+          status: "success",
+          latency_ms: 10,
+          error_type: nil,
+          error_message: nil,
+          agent_id: "email|x",
+          org: "anantha"
+        })
+      end
 
       # Scheduler has no request context, so Acs.Org.current() is the configured
       # org; the generator must discover and analyze the org that has the data.

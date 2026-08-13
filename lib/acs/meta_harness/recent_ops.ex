@@ -11,7 +11,7 @@ defmodule Acs.MetaHarness.RecentOps do
   # ponytail: O(n) prune on record; fine under agent-tool volume. Upgrade: timed sweep GenServer.
   @ttl_ms :timer.hours(24)
 
-  @doc "Create the ETS table (idempotent). Call from Application start when MetaHarness is on."
+  @doc "Create the ETS table (idempotent)."
   def setup do
     case :ets.whereis(@table) do
       :undefined ->
@@ -28,6 +28,30 @@ defmodule Acs.MetaHarness.RecentOps do
     end
 
     :ok
+  end
+
+  defmodule Table do
+    @moduledoc """
+    Dedicated owner process for the ETS table.
+
+    An ETS table dies with the process that created it. `setup/0` is called
+    lazily from whichever request/logger process runs first, so the table could
+    be owned by a short-lived pid and vanish (erasing the in-memory Analyzer
+    fallback) when that process exits. This supervised GenServer owns the table
+    and recreates it if it ever crashes.
+    """
+    use GenServer
+
+    @doc false
+    def start_link(opts \\ []) do
+      GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+    end
+
+    @impl true
+    def init(_opts) do
+      Acs.MetaHarness.RecentOps.setup()
+      {:ok, %{}}
+    end
   end
 
   @doc "Delete all recorded ops (tests)."
