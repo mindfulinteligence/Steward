@@ -683,7 +683,7 @@ defmodule AcsWeb.AcsLive.MemoryLive do
             <%= if @selected_memory.content do %>
               <div style="margin-bottom: 16px; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;">
                 <div style="font-family: var(--font-mono); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px;">Content</div>
-                <pre style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; font-size: 0.75rem; line-height: 1.5; flex: 1 1 auto; min-height: 200px; overflow-y: auto; color: var(--text-dim);"><%= @selected_memory.content %></pre>
+                <div class="markdown-content" style="background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; flex: 1 1 auto; min-height: 200px; overflow-y: auto;"><%= AcsWeb.Markdown.render(@selected_memory.content) %></div>
               </div>
             <% end %>
 

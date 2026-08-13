@@ -23,6 +23,7 @@ A required discriminated union on `kind`:
 - `document` → current `documents_propose` fields; `app` and `path` remain required.
 - `skill` → current `skill_save`; `name` and `content` remain required.
 - `memory_status` → current `set_memory_status`; chat remains restricted to `stale` and `deprecated`.
+- `memory_update` → current `update_memory`; resolves the target by `memory_id` (or by `title` + `scope_path`), replaces only the provided fields (`title`, `content`, `summary`, `importance`, `tags`, `triggers`, `failure_modes`, `related_memories`), and keeps provenance via the ledger. No create fallback — unknown memories error; use `memory` to create.
 - `person_status` → current `set_person_status`; `status` remains required.
 - `feedback` → current `submit_task_feedback`; authenticated chat identity supplies the agent.
 

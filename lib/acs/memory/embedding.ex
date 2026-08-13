@@ -378,6 +378,7 @@ defmodule Acs.Memory.Embedding do
       "",
       "Type: #{memory.kind}",
       "",
+      about_line(memory),
       "Title: #{memory.title}",
       "",
       "Summary: #{memory.summary || ""}",
@@ -388,6 +389,29 @@ defmodule Acs.Memory.Embedding do
     ]
     |> Enum.join("\n")
   end
+
+  defp about_line(%Acs.Memory{} = memory) do
+    case {about_tag(memory.tags, "about-name:"), about_tag(memory.tags, "about-type:")} do
+      {nil, nil} -> "About: (none)"
+      {nil, type} -> "About: type #{type}"
+      {name, nil} -> "About: #{name}"
+      {name, type} -> "About: #{type} #{name}"
+    end
+  end
+
+  defp about_tag(tags, prefix) when is_list(tags) do
+    Enum.find_value(tags, fn
+      tag when is_binary(tag) and tag != "" ->
+        if String.starts_with?(tag, prefix),
+          do: String.trim_leading(tag, prefix),
+          else: nil
+
+      _ ->
+        nil
+    end)
+  end
+
+  defp about_tag(_tags, _prefix), do: nil
 
   @doc """
   Checks if Ollama is reachable via health endpoint.

@@ -65,7 +65,9 @@ defmodule Acs.MixProject do
       {:jose, "~> 1.11"},
       {:assent, "~> 0.3.1"},
       # Optional production email (Resend) — enabled at runtime when RESEND_API_KEY is set
-      {:swoosh, "~> 1.26"}
+      {:swoosh, "~> 1.26"},
+      {:earmark, "~> 1.4"},
+      {:html_sanitize_ex, "~> 1.5"}
     ]
   end
 

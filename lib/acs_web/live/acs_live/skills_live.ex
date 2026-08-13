@@ -416,7 +416,7 @@ defmodule AcsWeb.AcsLive.SkillsLive do
               <% end %>
             </div>
             <div class="agent-task-label" style="margin-bottom: 8px;">Instructions (read-only)</div>
-            <pre style="white-space: pre-wrap; word-break: break-word; margin: 0; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-dim); font-family: var(--font-mono); font-size: 0.78rem; line-height: 1.55;"><%= @selected_skill.content %></pre>
+            <div class="markdown-content" style="margin: 0; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);"><%= AcsWeb.Markdown.render(@selected_skill.content) %></div>
           </div>
         <% end %>
       </div>

@@ -716,7 +716,7 @@ defmodule AcsWeb.AcsLive.SpecsLive do
             <div style="overflow-y: auto; padding: 24px; flex: 1; min-height: 0;">
               <%= if is_binary(@selected_spec.content) and @selected_spec.content != "" do %>
                 <div style="margin-bottom: 20px;">
-                  <pre style="white-space: pre-wrap; word-break: break-word; margin: 0; padding: 18px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-dim); font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6;"><%= @selected_spec.content %></pre>
+                  <div class="markdown-content" style="margin: 0; padding: 18px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);"><%= AcsWeb.Markdown.render(@selected_spec.content) %></div>
                 </div>
               <% end %>
 

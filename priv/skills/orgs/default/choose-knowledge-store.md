@@ -34,8 +34,10 @@ At the end of any coding or chat ACS task, before `release_work`, decide which k
    - → `specs_propose` with purpose / invariants / workflows (or `document_type: "spec"`).
 4. Else: is it a **short eternal truth**?
    - → `save_memory(kind, title, content, scope_path)` — read memory_protocol first.
-5. Pick **one** primary store. Do not dump the same content into all four.
-6. Then: unlock → `release_work` → `submit_task_feedback` last.
+5. Else: does a memory with the **same title/scope already exist** (from `ask`/`query_memories`), or did `save_memory` reject the save as a duplicate?
+   - → `update_memory` — resolve by `memory_id`, or by `title` + `scope_path`; replace only the provided fields; ledger keeps provenance. No create fallback — new truths go through `save_memory`.
+6. Pick **one** primary store. Do not dump the same content into all four.
+7. Then: unlock → `release_work` → `submit_task_feedback` last.
 
 ## Verification
 - Saved entry is findable via `skill_get` / `query_specs` / `ask` / `query_memories` as appropriate.

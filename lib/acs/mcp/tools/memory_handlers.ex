@@ -756,6 +756,13 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
   #
   # `embedding_result` is the pre-computed embedding from the background task:
   #   {:ok, embedding} | {:error, reason} | :skipped
+  #
+  # Returns one of:
+  #   :ok                            - no near-duplicate
+  #   {:error, msg}                  - hard block (very similar, same subject)
+  #   {:soft_block, msg, existing_id} - similar enough to warn, but saved as
+  #                                     "proposed" with a conflict flag instead of
+  #                                     refusing the save
   defp check_semantic_memory_duplicate(%Acs.Memory{} = memory, {:ok, embedding}) do
     # Layer 2: Vector similarity search with high threshold
     current_storage_id = Acs.Memory.Indexer.storage_id(memory.org, memory.id)
@@ -771,8 +778,21 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
         other = Acs.Memory.Indexer.get_memory(public_id, memory.org)
         other_title = if other, do: other.title, else: public_id
 
-        {:error,
-         "A similar memory already exists (cosine similarity: #{Float.round(most_similar.similarity, 4)}): '#{other_title}'. Please review existing memories before creating a new one."}
+        cond do
+          # Entity-aware gate: different subject (about_name/about_type) means a
+          # distinct fact, not a duplicate — never block on framing similarity.
+          distinct_subject?(memory, other) ->
+            check_lexical_memory_duplicate(memory.title, memory.scope_path)
+
+          most_similar.similarity >= 0.97 ->
+            {:error,
+             "A very similar memory already exists (cosine similarity: #{Float.round(most_similar.similarity, 4)}): '#{other_title}'. Please review existing memories before creating a new one."}
+
+          true ->
+            {:soft_block,
+             "A similar memory already exists (cosine similarity: #{Float.round(most_similar.similarity, 4)}): '#{other_title}'. Saved as 'proposed' for review — verify it is genuinely distinct before approving.",
+             public_id}
+        end
 
       [] ->
         # Layer 3 still applies when embeddings are up but nothing is near-duplicate.
@@ -813,6 +833,20 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
       String.starts_with?(memory_id, org <> ":")
     end
   end
+
+  # Entity-aware dedup gate: returns true when the new memory is about a
+  # different subject than an existing near-match, meaning they are distinct
+  # facts that must not be treated as duplicates.
+  #
+  # about_* is encoded as tags on both the %Acs.Memory{} (new) and the schema
+  # row (existing, tags_json). Compares about-name (and about-type) when the
+  # existing row declares a subject; if either side lacks a subject, falls back
+  # to not treating it as a distinct subject (i.e. let similarity decide).
+  defp distinct_subject?(%Acs.Memory{} = memory, other) do
+    Acs.Memory.SubjectIdentity.distinct_subject?(memory.tags, other)
+  end
+
+  defp distinct_subject?(_memory, _other), do: false
 
   # Stores the pre-computed embedding (computed once at the start of the save) so
   # the retrieval text is never re-embedded after the duplicate check.
@@ -874,13 +908,20 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
   # Returns nil for non-embeddable kinds so no embedding work is started.
   defp build_preview_memory(args) do
     if args["kind"] in Acs.Memory.embeddable_kinds() do
+      about_tags =
+        []
+        |> maybe_put_tag(args["about_type"], "about-type:")
+        |> maybe_put_tag(args["about_name"], "about-name:")
+        |> maybe_put_tag(args["about_email"], "about-email:")
+
       Acs.Memory.new(%{
         "kind" => args["kind"],
         "title" => args["title"],
         "summary" => args["summary"],
         "content" => args["content"],
         "scope_path" => args["scope_path"],
-        "failure_modes" => args["failure_modes"] || []
+        "failure_modes" => args["failure_modes"] || [],
+        "tags" => about_tags
       })
     end
   end
@@ -907,20 +948,54 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
   defp do_save_with_validation(memory, memory_map, embed_task, store_opts) do
     with :ok <- check_exact_memory_duplicate(memory.id),
          {:ok, embedding_result} <- await_embedding(embed_task),
-         :ok <- check_semantic_memory_duplicate(memory, embedding_result),
-         {:ok, conflict_flags} <- Acs.Memory.Conflict.check_before_save(memory_map),
-         {:ok, _result} <- Acs.Memory.Store.save(memory, store_opts) do
-      store_memory_embedding(memory, embedding_result)
+         semantic_result <- check_semantic_memory_duplicate(memory, embedding_result) do
+      case semantic_result do
+        {:error, reason} ->
+          {:error, reason}
 
-      {:ok,
-       %{
-         id: memory.id,
-         status: memory.status,
-         conflict_flags: conflict_flags,
-         message: "Memory saved with status: #{memory.status}"
-       }}
+        {:soft_block, message, existing_id} ->
+          memory = %{memory | status: "proposed"}
+
+          soft_flag = %{
+            type: "possible_duplicate",
+            existing_memory_id: existing_id,
+            reason: message,
+            confidence: :medium
+          }
+
+          save_with_flags(memory, memory_map, store_opts, [soft_flag], embedding_result, message)
+
+        :ok ->
+          save_with_flags(memory, memory_map, store_opts, [], embedding_result, nil)
+      end
     else
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp save_with_flags(memory, memory_map, store_opts, extra_flags, embedding_result, message) do
+    case Acs.Memory.Conflict.check_before_save(memory_map) do
+      {:ok, conflict_flags} ->
+        all_flags = conflict_flags ++ extra_flags
+
+        case Acs.Memory.Store.save(memory, store_opts) do
+          {:ok, _result} ->
+            store_memory_embedding(memory, embedding_result)
+
+            {:ok,
+             %{
+               id: memory.id,
+               status: memory.status,
+               conflict_flags: all_flags,
+               message: message || "Memory saved with status: #{memory.status}"
+             }}
+
+          other ->
+            other
+        end
+
+      other ->
+        other
     end
   end
 
