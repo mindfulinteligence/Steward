@@ -266,8 +266,7 @@ defmodule Acs.Skills.Auditor do
     recommendation =
       evaluation["recommendation"] || evaluation[:recommendation] || "needs_improvement"
 
-    quality_score =
-      evaluation["quality_score"] || evaluation[:quality_score] || 3
+    quality_score = coerce_score(evaluation["quality_score"] || evaluation[:quality_score])
 
     audit_status = recommendation_to_status(recommendation)
     audit_score = min(10, max(0, quality_score * 2))
@@ -328,4 +327,19 @@ defmodule Acs.Skills.Auditor do
   defp recommendation_to_status("ok"), do: "ok"
   defp recommendation_to_status("failing"), do: "failing"
   defp recommendation_to_status(_), do: "needs_improvement"
+
+  # The smaller model may return quality_score as a string ("4") or an out-of-range
+  # number; coerce to a 1-5 integer so the downstream `* 2` never raises or skews.
+  defp coerce_score(nil), do: 3
+  defp coerce_score(score) when is_integer(score), do: min(5, max(1, score))
+  defp coerce_score(score) when is_float(score), do: score |> round() |> coerce_score()
+
+  defp coerce_score(score) when is_binary(score) do
+    case Integer.parse(score) do
+      {int, _} -> coerce_score(int)
+      :error -> 3
+    end
+  end
+
+  defp coerce_score(_), do: 3
 end
