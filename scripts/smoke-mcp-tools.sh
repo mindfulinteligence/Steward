@@ -212,6 +212,10 @@ setup() {
   id=$((id + 1)); resp="$(call_tool "$id" set_memory_status "{\"memory_id\":\"$MEMORY_ID\",\"status\":\"approved\"}")"
   record set_memory_status "$(result "$resp")" 0
 
+  # update_memory needs an existing memory_id (MEMORY_ID from save_memory above).
+  id=$((id + 1)); resp="$(call_tool "$id" update_memory "{\"memory_id\":\"$MEMORY_ID\",\"content\":\"Updated by smoke-mcp-tools.sh run $RUN_ID\"}")"
+  record update_memory "$(result "$resp")" 0
+
   id=$((id + 1)); resp="$(call_tool "$id" query_memories "{\"query\":\"Tool smoke memory\",\"limit\":3}")"
   record query_memories "$(result "$resp")" 0
 
@@ -289,7 +293,7 @@ for t in create_org create_work claim_work lock_file get_locked_files unlock_fil
          specs_reject documents_propose query_specs skill_save skill_get \
          skill_audit_status generate_developer_key list_developer_keys \
          revoke_developer_key upsert_authority_level list_authority_levels \
-         delete_authority_level app_configure app_list app_remove; do
+         delete_authority_level app_configure app_list app_remove update_memory; do
   DONE["$t"]=1
 done
 
