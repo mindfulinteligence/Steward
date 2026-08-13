@@ -18,8 +18,12 @@ defmodule Acs.Memory.Embedding do
   @default_model "nomic-embed-text"
   # nomic-embed-text output size; must match pgvector column on Neon.
   @default_dimensions 768
-  # Bounded parallelism for batch embedding; avoids hammering Ollama on backfills.
-  @default_batch_concurrency 5
+  # Bounded parallelism for batch embedding; avoids hammering CPU-only Ollama on
+  # backfills (prod host has 2 cores).
+  @default_batch_concurrency 2
+  # Texts per `/api/embed` request. Batching cuts HTTP round-trips and lets
+  # Ollama process the array in a single model forward pass.
+  @default_batch_chunk_size 8
 
   @doc """
   Returns the configured Ollama URL.
@@ -186,32 +190,98 @@ defmodule Acs.Memory.Embedding do
   end
 
   @doc """
-  Embeds a list of texts with bounded parallel concurrency.
+  Embeds a list of texts in bounded-size batches via the Ollama `/api/embed`
+  endpoint.
+
+  Texts are split into chunks (default `#{@default_batch_chunk_size}`, tunable
+  via the `:embed_batch_chunk_size` config key or the `:chunk_size` option),
+  each sent as one batch request with bounded parallel concurrency (default
+  `#{@default_batch_concurrency}`, overridable via the
+  `:embed_batch_concurrency` config key or the `:max_concurrency` option) so
+  large backfills don't hammer CPU-only Ollama.
 
   Returns a per-text result list in input order: `[{:ok, embedding} |
-  {:error, reason}]`. Concurrency is bounded (default `#{@default_batch_concurrency}`,
-  overridable via the `:embed_batch_concurrency` config key or the
-  `:max_concurrency` option) so large backfills don't hammer Ollama.
+  {:error, reason}]`.
   """
   @spec embed_batch([String.t()], keyword()) :: [{:ok, [float()]} | {:error, String.t()}]
   def embed_batch(texts, opts \\ []) do
+    chunk_size =
+      opts[:chunk_size] ||
+        Application.get_env(:steward_acs, __MODULE__, [])
+        |> Keyword.get(:embed_batch_chunk_size, @default_batch_chunk_size)
+
     max_concurrency =
       opts[:max_concurrency] ||
         Application.get_env(:steward_acs, __MODULE__, [])
         |> Keyword.get(:embed_batch_concurrency, @default_batch_concurrency)
 
-    texts
-    |> Task.async_stream(
-      &embed_text/1,
-      max_concurrency: max_concurrency,
-      timeout: 60_000,
-      ordered: true,
-      on_timeout: :kill_task
-    )
-    |> Enum.map(fn
-      {:ok, result} -> result
-      {:exit, _reason} -> {:error, "embedding timed out"}
+    chunks = Enum.chunk_every(texts, chunk_size)
+
+    chunk_results =
+      chunks
+      |> Task.async_stream(
+        &embed_chunk/1,
+        max_concurrency: max_concurrency,
+        timeout: 60_000,
+        ordered: true,
+        on_timeout: :kill_task
+      )
+      |> Enum.map(fn
+        {:ok, result} -> result
+        {:exit, _reason} -> {:error, "embedding timed out"}
+      end)
+
+    Enum.zip(chunks, chunk_results)
+    |> Enum.flat_map(fn
+      {_chunk, {:ok, embeddings}} when is_list(embeddings) ->
+        Enum.map(embeddings, &{:ok, &1})
+
+      {chunk, {:error, reason}} ->
+        Enum.map(chunk, fn _ -> {:error, reason} end)
     end)
+  end
+
+  @doc false
+  def embed_chunk(texts) when is_list(texts) and texts != [] do
+    url = ollama_url()
+    model_name = model()
+    prompt_chars = texts |> Enum.map(&byte_size/1) |> Enum.sum()
+    started = System.monotonic_time(:millisecond)
+
+    body = %{
+      "model" => model_name,
+      "input" => texts
+    }
+
+    result =
+      case Req.post("#{url}/api/embed", json: body, receive_timeout: 30_000, retry: false) do
+        {:ok, %{status: 200, body: %{"embeddings" => embeddings}}} when is_list(embeddings) ->
+          if length(embeddings) == length(texts) do
+            {:ok, embeddings}
+          else
+            {:error,
+             "Ollama returned #{length(embeddings)} embeddings for #{length(texts)} inputs"}
+          end
+
+        {:ok, %{status: status, body: body}} ->
+          {:error, "Ollama returned status #{status}: #{inspect(body)}"}
+
+        {:error, %{reason: :econnrefused}} ->
+          Logger.warning("[Embedding] Ollama connection refused at #{url}")
+          {:error, "Ollama unavailable at #{url}"}
+
+        {:error, %{reason: reason}} ->
+          Logger.warning("[Embedding] Ollama request failed: #{inspect(reason)}")
+          {:error, "Embedding request failed: #{inspect(reason)}"}
+      end
+
+    latency_ms = System.monotonic_time(:millisecond) - started
+    log_embedding_call(result, model_name, latency_ms, prompt_chars)
+    result
+  rescue
+    e ->
+      Logger.error("[Embedding] Exception during embed_chunk: #{inspect(e)}")
+      {:error, "Embedding failed: #{inspect(e)}"}
   end
 
   @doc """

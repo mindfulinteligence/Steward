@@ -136,6 +136,9 @@ if [ "$OLLAMA" = "y" ]; then
     ports: ["11434:11434"]
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      # Keep nomic-embed-text resident so embedding calls never pay a cold-start reload.
+      OLLAMA_KEEP_ALIVE: "-1"
     healthcheck:
       test: ["CMD-SHELL", "ollama list | grep -q nomic-embed-text"]
       interval: 30s

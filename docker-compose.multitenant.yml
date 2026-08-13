@@ -140,6 +140,10 @@ services:
       - "11434"
     volumes:
       - ollama_data:/root/.ollama
+    environment:
+      # Keep nomic-embed-text resident so embedding calls never pay a cold-start
+      # reload (default unloads after 5 min idle -> multi-second spikes on a 2-CPU box).
+      OLLAMA_KEEP_ALIVE: "-1"
     # Health = serve is up AND the embedding model is present. Without the
     # model grep this stays "healthy" while every embed call 404s. If the model
     # is missing, scripts/ensure-ollama-model.sh (cron + @reboot) pulls it.
