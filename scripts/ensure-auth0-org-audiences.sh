@@ -32,6 +32,33 @@ MGMT_TOKEN=$(curl -sS --fail-with-body -X POST "https://${DOMAIN}/oauth/token" \
   -d "{\"client_id\":\"${M2M_ID}\",\"client_secret\":\"${M2M_SECRET}\",\"audience\":\"${MGMT_AUDIENCE}\",\"grant_type\":\"client_credentials\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
+# The broker relays every connector through the fixed DCR Auth0 client, so
+# Auth0 validates each org's broker callback (https://{slug}.{base}/oauth/callback)
+# against that client's allowlist. A single subdomain wildcard covers every
+# current and future org host, so no per-org Auth0 edit is ever needed.
+# Additive merge — other callbacks are never removed.
+if [[ -n "$FIXED_DCR_ID" ]]; then
+  CALLBACK="https://*.${BASE_DOMAIN}/oauth/callback"
+  CURRENT=$(api GET "/clients/${FIXED_DCR_ID}?fields=callbacks&include_fields=true" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('callbacks') or []))")
+  MISSING=$(python3 -c "
+import json, sys
+have = set(json.loads(sys.argv[1]))
+print('yes' if sys.argv[2] in have else 'no')
+" "$CURRENT" "$CALLBACK")
+  if [[ "$MISSING" != "yes" ]]; then
+    DESIRED=$(python3 -c "
+import json, sys
+have = set(json.loads(sys.argv[1]))
+have.add(sys.argv[2])
+print(json.dumps(sorted(have)))
+" "$CURRENT" "$CALLBACK")
+    api PATCH "/clients/${FIXED_DCR_ID}" -d "{\"callbacks\": ${DESIRED}}" >/dev/null
+    echo "[auth0] added broker wildcard callback ${CALLBACK} to fixed DCR client ${FIXED_DCR_ID}"
+  else
+    echo "[auth0] broker wildcard callback ${CALLBACK} already allowlisted"
+  fi
+fi
+
 while read -r SLUG AUDIENCE; do
   echo "[auth0] ensuring API ${AUDIENCE}"
   MCP_API_ID=$(api GET /resource-servers | python3 -c "
@@ -103,30 +130,9 @@ for r in json.load(sys.stdin):
   done
 
   # The broker relays every connector through the fixed DCR Auth0 client, so
-  # Auth0 validates each org's broker callback against that client's allowlist.
-  # Without this, connectors pointed at this org host fail with "Callback URL
-  # mismatch" at /authorize. Additive merge — other callbacks are never removed.
-  if [[ -n "$FIXED_DCR_ID" ]]; then
-    CALLBACK="https://${SLUG}.${BASE_DOMAIN}/oauth/callback"
-    CURRENT=$(api GET "/clients/${FIXED_DCR_ID}?fields=callbacks&include_fields=true" | python3 -c "import sys,json; print(json.dumps(json.load(sys.stdin).get('callbacks') or []))")
-    MISSING=$(python3 -c "
-import json, sys
-have = set(json.loads(sys.argv[1]))
-print('yes' if sys.argv[2] in have else 'no')
-" "$CURRENT" "$CALLBACK")
-    if [[ "$MISSING" != "yes" ]]; then
-      DESIRED=$(python3 -c "
-import json, sys
-have = set(json.loads(sys.argv[1]))
-have.add(sys.argv[2])
-print(json.dumps(sorted(have)))
-" "$CURRENT" "$CALLBACK")
-      api PATCH "/clients/${FIXED_DCR_ID}" -d "{\"callbacks\": ${DESIRED}}" >/dev/null
-      echo "  added broker callback ${CALLBACK} to fixed DCR client ${FIXED_DCR_ID}"
-    else
-      echo "  broker callback ${CALLBACK} already allowlisted"
-    fi
-  fi
+  # Auth0 validates the org's broker callback against that client's allowlist.
+  # Per-org callbacks were replaced by a single subdomain wildcard (see below);
+  # the per-slug loop only manages resource servers, grants, and role perms.
 done < <(python3 - "$ORGS_FILE" "$BASE_DOMAIN" "$EXTRA_ORG_SLUGS" <<'PY'
 import sys
 import yaml

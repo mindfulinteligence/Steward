@@ -47,7 +47,7 @@ defmodule Acs.Auth0.OrgAudience do
          {:ok, _} <- ensure_resource_server(cfg, token, audience),
          :ok <- ensure_third_party_grant(cfg, token, audience),
          :ok <- ensure_role_permissions(cfg, token, audience),
-         :ok <- ensure_broker_callback(cfg, token, slug, cfg.base_domain) do
+         :ok <- ensure_broker_callback(cfg, token, cfg.base_domain) do
       :ok
     else
       false -> {:error, :mgmt_not_configured}
@@ -64,9 +64,9 @@ defmodule Acs.Auth0.OrgAudience do
   end
 
   @doc false
-  def broker_callback_url(slug, base_domain)
-      when is_binary(slug) and is_binary(base_domain) do
-    "https://#{slug}.#{base_domain}/oauth/callback"
+  def broker_wildcard_callback_url(base_domain)
+      when is_binary(base_domain) do
+    "https://*.#{base_domain}/oauth/callback"
   end
 
   defp present_base_domain?(%{base_domain: base}) when is_binary(base) do
@@ -181,12 +181,13 @@ defmodule Acs.Auth0.OrgAudience do
 
   # The broker relays every connector through the fixed DCR Auth0 client, so
   # Auth0 validates each org's broker callback (https://{slug}.{base}/oauth/callback)
-  # against that client's allowlist. Without this, Claude connecting to a new
-  # org host hits "Callback URL mismatch" at /authorize. Additive merge: other
-  # connectors' callbacks are never removed.
-  defp ensure_broker_callback(cfg, token, slug, base_domain) do
+  # against that client's allowlist. Auth0 supports subdomain wildcards, so a
+  # single https://*.{base}/oauth/callback entry covers every current and future
+  # org host — no per-org Auth0 edit. Additive merge: other connectors'
+  # callbacks are never removed.
+  defp ensure_broker_callback(cfg, token, base_domain) do
     with client_id when is_binary(client_id) <- OAuthConfig.fixed_dcr_client_id() do
-      callback = broker_callback_url(slug, base_domain)
+      callback = broker_wildcard_callback_url(base_domain)
 
       case Management.get(
              cfg,
