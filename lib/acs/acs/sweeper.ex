@@ -25,13 +25,27 @@ defmodule Acs.Acs.Sweeper do
   @impl true
   def init(_opts) do
     Logger.info("[Acs.Sweeper] Starting auto-release sweeper")
+    Acs.IdleTracker.subscribe()
     schedule_sweep()
     {:ok, %{}}
   end
 
   @impl true
   def handle_info(:sweep, state) do
-    do_sweep()
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[Acs.Sweeper] Idle, sleeping")
+      schedule_sweep_sleep()
+      {:noreply, state}
+    else
+      do_sweep()
+      schedule_sweep()
+      {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info(:activity, state) do
+    Logger.debug("[Acs.Sweeper] Activity detected, waking to fast cadence")
     schedule_sweep()
     {:noreply, state}
   end
@@ -44,6 +58,10 @@ defmodule Acs.Acs.Sweeper do
 
   defp schedule_sweep do
     Process.send_after(self(), :sweep, @sweep_interval)
+  end
+
+  defp schedule_sweep_sleep do
+    Process.send_after(self(), :sweep, Acs.IdleTracker.sleep_interval_ms())
   end
 
   defp do_sweep do

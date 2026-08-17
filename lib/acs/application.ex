@@ -55,8 +55,12 @@ defmodule Acs.Application do
         []
       end
 
+    # IdleTracker must be up before LogStore and the MetaHarness Scheduler so
+    # they can consult idle?/0 on their first tick. PubSub is prepended last
+    # (after the auditor children below) so it starts before every worker that
+    # subscribes to idle→active wake broadcasts in its init.
     children =
-      [Acs.Apps.Config, Acs.Repo] ++
+      [Acs.Apps.Config, Acs.Repo, Acs.IdleTracker] ++
         observability_children ++
         meta_harness_children ++
         [
@@ -72,7 +76,6 @@ defmodule Acs.Application do
           Acs.MCP.ErrorTrace,
           Acs.LogAnalyzer,
           # Acs.MCP.Server removed — endpoint handles MCP routing (start_http/1 available for standalone)
-          {Phoenix.PubSub, name: AcsWeb.PubSub},
           AcsWeb.Endpoint
         ]
 
@@ -108,6 +111,10 @@ defmodule Acs.Application do
       else
         children
       end
+
+    # PubSub must start before any worker that subscribes to idle→active
+    # wake broadcasts, so prepend it after the auditor children are folded in.
+    children = [{Phoenix.PubSub, name: AcsWeb.PubSub} | children]
 
     opts = [strategy: :one_for_one, name: Acs.Supervisor]
     {:ok, pid} = Supervisor.start_link(children, opts)
@@ -192,6 +199,8 @@ defmodule Acs.Application do
   end
 
   def handle_mount_telemetry(_event, measurements, metadata, _config) do
+    Acs.IdleTracker.touch()
+
     duration_ms =
       measurements.duration
       |> System.convert_time_unit(:native, :microsecond)
