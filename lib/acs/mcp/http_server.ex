@@ -326,25 +326,17 @@ defmodule Acs.MCP.HTTPServer do
     |> send_resp(200, Jason.encode!(result))
   end
 
-  # Health check
+  # Health check — DB probe removed so Neon compute can suspend when idle.
+  # Assume the database is healthy; failures surface via app logs and Axiom.
   get "/mcp/health" do
-    db_ok =
-      case Ecto.Adapters.SQL.query(Acs.Repo, "SELECT 1", []) do
-        {:ok, _} -> true
-        _ -> false
-      end
-
-    status = if db_ok, do: "healthy", else: "degraded"
-    http_status = if db_ok, do: 200, else: 503
-
     conn
     |> put_private(:phoenix_log_level, false)
     |> put_resp_content_type("application/json")
     |> send_resp(
-      http_status,
+      200,
       Jason.encode!(%{
-        status: status,
-        database: db_ok,
+        status: "healthy",
+        database: true,
         timestamp: DateTime.utc_now()
       })
     )

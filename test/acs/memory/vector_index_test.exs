@@ -43,6 +43,46 @@ defmodule Acs.Memory.VectorIndexTest do
     end
   end
 
+  describe "upsert_embeddings/1" do
+    test "batch stores embeddings for multiple memories" do
+      entries = [
+        {"batch1_#{System.unique_integer([:positive])}", [1.0, 0.0, 0.0, 0.0, 0.0], "default",
+         nil, nil},
+        {"batch2_#{System.unique_integer([:positive])}", [0.0, 1.0, 0.0, 0.0, 0.0], "default",
+         nil, nil},
+        {"batch3_#{System.unique_integer([:positive])}", [0.0, 0.0, 1.0, 0.0, 0.0], "default",
+         nil, nil}
+      ]
+
+      assert VectorIndex.upsert_embeddings(entries) == :ok
+
+      assert {:ok, %{rows: rows}} =
+               Acs.Repo.query("SELECT memory_id FROM memory_embeddings WHERE org = ?", [
+                 "default"
+               ])
+
+      assert length(rows) == 3
+    end
+
+    test "batch upsert updates existing rows" do
+      memory_id = "batch_update_#{System.unique_integer([:positive])}"
+
+      VectorIndex.upsert_embedding(memory_id, [1.0, 0.0, 0.0, 0.0, 0.0])
+
+      assert VectorIndex.upsert_embeddings([
+               {memory_id, [0.0, 1.0, 0.0, 0.0, 0.0], "default", nil, nil}
+             ]) == :ok
+
+      assert {:ok, %{rows: [[stored_id]]}} =
+               Acs.Repo.query(
+                 "SELECT memory_id FROM memory_embeddings WHERE org = ?",
+                 ["default"]
+               )
+
+      assert stored_id == memory_id
+    end
+  end
+
   describe "search_similar/2" do
     test "finds similar memories within the same org" do
       # Insert test memories with known embeddings

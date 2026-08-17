@@ -94,6 +94,65 @@ defmodule Acs.Skills.VectorSearch do
     :ok
   end
 
+  @batch_upsert_max_rows 50
+
+  def upsert_embeddings(entries, repo \\ Acs.Repo) when is_list(entries) and entries != [] do
+    entries
+    |> Enum.chunk_every(@batch_upsert_max_rows)
+    |> Enum.each(fn chunk ->
+      {sql, params} = build_batch_upsert(chunk, repo)
+      repo.query(sql, params)
+    end)
+
+    :ok
+  end
+
+  defp build_batch_upsert(entries, repo) do
+    if Pgvector.enabled?(repo) do
+      values =
+        entries
+        |> Enum.with_index(1)
+        |> Enum.map_join(", ", fn {_entry, i} ->
+          p = (i - 1) * 5 + 1
+          "($#{p}, $#{p + 1}, $#{p + 2}, $#{p + 3}, ($#{p + 4}::text)::vector, NOW())"
+        end)
+
+      params =
+        Enum.flat_map(entries, fn {skill_name, embedding, org, entry_repo, origin} ->
+          [skill_name, org, entry_repo, origin, Pgvector.encode(embedding)]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (skill_name, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT (skill_name, org) DO UPDATE SET
+         repo = EXCLUDED.repo,
+         origin = EXCLUDED.origin,
+         embedding = EXCLUDED.embedding,
+         updated_at = EXCLUDED.updated_at
+       """, params}
+    else
+      values =
+        entries
+        |> Enum.map_join(", ", fn _entry -> "(?, ?, ?, ?, ?, datetime('now'))" end)
+
+      params =
+        Enum.flat_map(entries, fn {skill_name, embedding, org, entry_repo, origin} ->
+          [skill_name, org, entry_repo, origin, Pgvector.encode(embedding)]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (skill_name, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT(skill_name, org) DO UPDATE SET
+         repo = excluded.repo,
+         origin = excluded.origin,
+         embedding = excluded.embedding,
+         updated_at = excluded.updated_at
+       """, params}
+    end
+  end
+
   def remove_embedding(skill_name, org \\ Acs.Org.current(), repo \\ Acs.Repo)
       when is_binary(skill_name) and is_binary(org) do
     if Pgvector.enabled?(repo) do
@@ -255,22 +314,25 @@ defmodule Acs.Skills.VectorSearch do
 
     results = Acs.Memory.Embedding.embed_batch(Enum.map(to_embed, &retrieval_text/1))
 
-    {embedded, failed} =
+    {embedded, failed, successes} =
       to_embed
       |> Enum.zip(results)
-      |> Enum.reduce({0, 0}, fn
-        {skill, {:ok, embedding}}, {emb_acc, fail_acc} ->
-          upsert_embedding(skill["name"], embedding, Acs.Org.current(), Acs.Repo,
-            repo: skill["repo"],
-            origin: skill["origin"]
-          )
+      |> Enum.reduce({0, 0, []}, fn
+        {skill, {:ok, embedding}}, {emb_acc, fail_acc, ok} ->
+          {emb_acc + 1, fail_acc, [{skill, embedding} | ok]}
 
-          {emb_acc + 1, fail_acc}
-
-        {skill, {:error, reason}}, {emb_acc, fail_acc} ->
+        {skill, {:error, reason}}, {emb_acc, fail_acc, ok} ->
           Logger.warning("[Skills.VectorSearch] Failed to embed #{skill["name"]}: #{reason}")
-          {emb_acc, fail_acc + 1}
+          {emb_acc, fail_acc + 1, ok}
       end)
+
+    if successes != [] do
+      upsert_embeddings(
+        Enum.map(successes, fn {skill, embedding} ->
+          {skill["name"], embedding, Acs.Org.current(), skill["repo"], skill["origin"]}
+        end)
+      )
+    end
 
     stats = %{
       total: length(skills),
