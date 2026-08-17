@@ -21,6 +21,11 @@ set -euo pipefail
 
 INFISICAL_PROJECT_ID="${INFISICAL_PROJECT_ID:-6395f4c0-45f2-4f54-802d-26a55bbb9555}"
 INFISICAL_ENV="${INFISICAL_ENV:-prod}"
+# Optional secret folder path inside the env (e.g. /4sg for the second server).
+# Secrets live under env prod by default; a per-server folder (prod//4sg) lets a
+# second host override only its own DATABASE_URL / AXIOM_LOGS / tokens while
+# sharing the rest, without needing a new Infisical environment.
+INFISICAL_PATH="${INFISICAL_PATH:-}"
 INFISICAL_HOST_URL="${INFISICAL_HOST_URL:-https://app.infisical.com}"
 AGENT_ENV_FILE="${INFISICAL_AGENT_ENV:-.infisical.env}"
 SECRETS_FILE="${INFISICAL_SECRETS_FILE:-.env.infisical}"
@@ -60,6 +65,7 @@ infisical export \
   --token="$INFISICAL_TOKEN" \
   --projectId="$INFISICAL_PROJECT_ID" \
   --env="$INFISICAL_ENV" \
+  ${INFISICAL_PATH:+--path="$INFISICAL_PATH"} \
   --format=dotenv \
   >"$tmp" || die "infisical export failed"
 
