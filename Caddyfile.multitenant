@@ -23,6 +23,12 @@
     # on every Claude connect until the tenant hits too_many_entities.
 }
 
+# mind_chat — MIND questionnaire chatbot app (chat_mind container)
+mind_chat.{$BASE_DOMAIN} {
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
+    reverse_proxy chat_mind:4000
+}
+
 # Wildcard TLS — origin cert must cover *.{$BASE_DOMAIN}
 # Apex {$BASE_DOMAIN} is the Astro marketing site (not this Caddy). ACS serves
 # tenants + ACCOUNT_HOST (prod.stewardacs.xyz) on the wildcard only.
