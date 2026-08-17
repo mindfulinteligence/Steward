@@ -576,13 +576,23 @@ defmodule Acs.Memory.Embedding do
   defp embed_in_batches(memories, batch_size, embedded, failed) do
     {batch, rest} = Enum.split(memories, batch_size)
 
-    {batch_embedded, batch_failed} =
-      Enum.reduce(batch, {0, 0}, fn schema, {emb_acc, fail_acc} ->
+    {batch_embedded, batch_failed, successes} =
+      Enum.reduce(batch, {0, 0, []}, fn schema, {emb_acc, fail_acc, ok} ->
         case embed_single_memory(schema) do
-          :ok -> {emb_acc + 1, fail_acc}
-          :error -> {emb_acc, fail_acc + 1}
+          {:ok, embedding} -> {emb_acc + 1, fail_acc, [{schema, embedding} | ok]}
+          :error -> {emb_acc, fail_acc + 1, ok}
         end
       end)
+
+    alias Acs.Memory.VectorIndex
+
+    if successes != [] do
+      VectorIndex.upsert_embeddings(
+        Enum.map(successes, fn {schema, embedding} ->
+          {schema.id, embedding, schema.org, schema.repo, schema.origin}
+        end)
+      )
+    end
 
     # Sleep between batches to avoid overwhelming Ollama
     if rest != [] do
@@ -594,7 +604,6 @@ defmodule Acs.Memory.Embedding do
 
   defp embed_single_memory(schema) do
     alias Acs.Memory.Indexer
-    alias Acs.Memory.VectorIndex
 
     # Convert schema to Memory struct
     attrs = Indexer.schema_to_memory_attrs(schema)
@@ -606,12 +615,7 @@ defmodule Acs.Memory.Embedding do
     # Generate embedding
     case embed_text(retrieval_text) do
       {:ok, embedding} ->
-        VectorIndex.upsert_embedding(schema.id, embedding, schema.org, Acs.Repo,
-          repo: schema.repo,
-          origin: schema.origin
-        )
-
-        :ok
+        {:ok, embedding}
 
       {:error, reason} ->
         Logger.warning("[Embedding] Failed to embed memory #{memory.id}: #{reason}")

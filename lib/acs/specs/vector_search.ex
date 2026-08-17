@@ -152,6 +152,94 @@ defmodule Acs.Specs.VectorSearch do
     :ok
   end
 
+  @batch_upsert_max_rows 50
+
+  def upsert_chunks(entries, repo \\ Acs.Repo) when is_list(entries) and entries != [] do
+    entries
+    |> Enum.chunk_every(@batch_upsert_max_rows)
+    |> Enum.each(fn chunk ->
+      {sql, params} = build_batch_upsert(chunk, repo)
+      repo.query(sql, params)
+    end)
+
+    :ok
+  end
+
+  defp build_batch_upsert(entries, repo) do
+    if Pgvector.enabled?(repo) do
+      values =
+        entries
+        |> Enum.with_index(1)
+        |> Enum.map_join(", ", fn {_entry, i} ->
+          p = (i - 1) * 10 + 1
+
+          "($#{p}, $#{p + 1}, $#{p + 2}, $#{p + 3}, $#{p + 4}, $#{p + 5}, $#{p + 6}, $#{p + 7}, $#{p + 8}, ($#{p + 9}::text)::vector, NOW())"
+        end)
+
+      params =
+        Enum.flat_map(entries, fn {id, app, path, chunk_index, source, content, embedding, org,
+                                   entry_repo, origin} ->
+          [
+            id,
+            app,
+            path,
+            chunk_index,
+            source,
+            content,
+            org,
+            entry_repo,
+            origin,
+            Pgvector.encode(embedding)
+          ]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT (id, org) DO UPDATE SET
+         repo = EXCLUDED.repo,
+         origin = EXCLUDED.origin,
+         embedding = EXCLUDED.embedding,
+         content = EXCLUDED.content,
+         source = EXCLUDED.source,
+         updated_at = EXCLUDED.updated_at
+       """, params}
+    else
+      values =
+        entries
+        |> Enum.map_join(", ", fn _entry -> "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))" end)
+
+      params =
+        Enum.flat_map(entries, fn {id, app, path, chunk_index, source, content, embedding, org,
+                                   entry_repo, origin} ->
+          [
+            id,
+            app,
+            path,
+            chunk_index,
+            source,
+            content,
+            org,
+            entry_repo,
+            origin,
+            Pgvector.encode(embedding)
+          ]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (id, app, path, chunk_index, source, content, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT(id, org) DO UPDATE SET
+         repo = excluded.repo,
+         origin = excluded.origin,
+         embedding = excluded.embedding,
+         content = excluded.content,
+         source = excluded.source,
+         updated_at = excluded.updated_at
+       """, params}
+    end
+  end
+
   def remove_embeddings(app, path, org \\ Acs.Org.current(), repo \\ Acs.Repo) do
     repo.query(
       "DELETE FROM #{@table_name} WHERE app = ? AND path = ? AND org = ?",
@@ -355,28 +443,27 @@ defmodule Acs.Specs.VectorSearch do
 
     results = Acs.Memory.Embedding.embed_batch(Enum.map(unembedded_chunks, & &1.text))
 
-    {embedded, failed} =
+    {embedded, failed, successes} =
       unembedded_chunks
       |> Enum.zip(results)
-      |> Enum.reduce({0, 0}, fn
-        {chunk, {:ok, embedding}}, {emb_acc, fail_acc} ->
-          upsert_chunk(
-            chunk.id,
-            chunk.app,
-            chunk.path,
-            chunk.chunk_index,
-            chunk.source,
-            chunk.content,
-            embedding
-          )
+      |> Enum.reduce({0, 0, []}, fn
+        {chunk, {:ok, embedding}}, {emb_acc, fail_acc, ok} ->
+          {emb_acc + 1, fail_acc, [{chunk, embedding} | ok]}
 
-          {emb_acc + 1, fail_acc}
-
-        {chunk, {:error, reason}}, {emb_acc, fail_acc} ->
+        {chunk, {:error, reason}}, {emb_acc, fail_acc, ok} ->
           Logger.warning("[Specs.VectorSearch] Failed to embed chunk #{chunk.id}: #{reason}")
 
-          {emb_acc, fail_acc + 1}
+          {emb_acc, fail_acc + 1, ok}
       end)
+
+    if successes != [] do
+      upsert_chunks(
+        Enum.map(successes, fn {chunk, embedding} ->
+          {chunk.id, chunk.app, chunk.path, chunk.chunk_index, chunk.source, chunk.content,
+           embedding, Acs.Org.current(), Map.get(chunk, :repo), Map.get(chunk, :origin)}
+        end)
+      )
+    end
 
     stats = %{
       total_entries: length(entries),

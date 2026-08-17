@@ -1,10 +1,15 @@
 name: Deploy
 
-# Build + push the release image, then cut over a target host via scripts/deploy.sh.
+# Build + push the release image, then cut over one or more target hosts via scripts/deploy.sh.
 # Cutover is gated on CI (test + release compile + credo) unless skip_ci on dispatch.
 # New hosts: run scripts/bootstrap-server.sh once, then use this workflow.
 #
-# Create GitHub Environments "prod" (and optional "staging") with secrets:
+# One server per GitHub Environment. The build job runs once; the cutover/rollback
+# jobs matrix over the requested environments. For a single deploy just set the
+# `environment` input (backward compatible); for several, set `servers` to a
+# comma-separated list of environments (e.g. "prod,prod-4sg").
+#
+# Create GitHub Environments "prod" (and optional "staging" / "prod-4sg") with secrets:
 #   DEPLOY_HOST          e.g. 139.99.89.23
 #   DEPLOY_USER          e.g. ubuntu
 #   SSH_PRIVATE_KEY      deploy key for DEPLOY_HOST
@@ -27,7 +32,13 @@ on:
         options:
           - prod
           - staging
+          - prod-4sg
         default: prod
+      servers:
+        description: Comma-separated environments to cut over (defaults to `environment`)
+        required: false
+        type: string
+        default: ""
       cutover:
         description: Blue/green cutover on server (idle slot → healthy → Caddy reload)
         required: true
@@ -73,7 +84,7 @@ on:
       - ".github/workflows/ci.yml"
 
 concurrency:
-  group: deploy-${{ github.event.inputs.environment || 'prod' }}
+  group: deploy-${{ github.event.inputs.servers || github.event.inputs.environment || 'prod' }}
   cancel-in-progress: false
 
 env:
@@ -140,8 +151,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  resolve-targets:
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - id: targets
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            SERVERS="${{ github.event.inputs.servers }}"
+            if [[ -z "$SERVERS" ]]; then
+              SERVERS="${{ github.event.inputs.environment }}"
+            fi
+          else
+            SERVERS="prod"
+          fi
+          TARGETS="$(printf '%s' "$SERVERS" | jq -R -c 'split(",") | map(trim) | map(select(length > 0))')"
+          echo "targets=${TARGETS}" >> "$GITHUB_OUTPUT"
+
   cutover:
-    needs: [ci, build-push]
+    needs: [ci, build-push, resolve-targets]
     if: >-
       always() &&
       needs.build-push.result == 'success' &&
@@ -154,7 +183,11 @@ jobs:
           fromJSON(github.event.inputs.skip_ci))
       )
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'prod' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.resolve-targets.outputs.targets) }}
+    environment: ${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
 
@@ -190,7 +223,12 @@ jobs:
     name: Roll back to previous tag
     if: github.event_name == 'workflow_dispatch' && fromJSON(github.event.inputs.rollback)
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.environment || 'prod' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.resolve-targets.outputs.targets) }}
+    needs: [resolve-targets]
+    environment: ${{ matrix.environment }}
     steps:
       - uses: actions/checkout@v4
 

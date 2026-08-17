@@ -85,7 +85,15 @@ config :steward_acs, AcsWeb.Endpoint,
 
 config :steward_acs,
        :auditor_interval,
-       System.get_env("AUDITOR_INTERVAL", "30000") |> String.to_integer()
+       System.get_env("AUDITOR_INTERVAL", "300000") |> String.to_integer()
+
+config :steward_acs,
+       :skill_auditor_interval,
+       System.get_env("SKILL_AUDITOR_INTERVAL", "300000") |> String.to_integer()
+
+config :steward_acs,
+       :spec_auditor_interval,
+       System.get_env("SPEC_AUDITOR_INTERVAL", "300000") |> String.to_integer()
 
 config :steward_acs,
        :auditor_max_concurrency,

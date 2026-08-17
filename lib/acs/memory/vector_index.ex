@@ -108,6 +108,93 @@ defmodule Acs.Memory.VectorIndex do
     :ok
   end
 
+  @batch_upsert_max_rows 50
+
+  @doc """
+  Batch store or update embeddings for multiple memories.
+
+  Entries are `{memory_id, embedding, org, repo, origin}` tuples. Rows are
+  upserted in multi-row statements (chunked to respect SQLite's parameter
+  limit) instead of one round-trip per memory.
+  """
+  def upsert_embeddings(entries, repo \\ Acs.Repo) when is_list(entries) and entries != [] do
+    entries
+    |> Enum.chunk_every(@batch_upsert_max_rows)
+    |> Enum.each(fn chunk ->
+      {sql, params} = build_batch_upsert(chunk, repo)
+
+      Retry.with_busy_retry(fn ->
+        case repo.query(sql, params) do
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            raise "memory embeddings upsert failed: #{inspect(reason)}"
+        end
+      end)
+    end)
+
+    :ok
+  end
+
+  defp build_batch_upsert(entries, repo) do
+    if Pgvector.enabled?(repo) do
+      values =
+        entries
+        |> Enum.with_index(1)
+        |> Enum.map_join(", ", fn {_entry, i} ->
+          p = (i - 1) * 5 + 1
+          "($#{p}, $#{p + 1}, $#{p + 2}, $#{p + 3}, ($#{p + 4}::text)::vector, NOW())"
+        end)
+
+      params =
+        Enum.flat_map(entries, fn {memory_id, embedding, org, entry_repo, origin} ->
+          [
+            Acs.Org.memory_index_id(memory_id, org),
+            org,
+            entry_repo,
+            origin,
+            Pgvector.encode(embedding)
+          ]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT (memory_id, org) DO UPDATE SET
+         repo = EXCLUDED.repo,
+         origin = EXCLUDED.origin,
+         embedding = EXCLUDED.embedding,
+         updated_at = EXCLUDED.updated_at
+       """, params}
+    else
+      values =
+        entries
+        |> Enum.map_join(", ", fn _entry -> "(?, ?, ?, ?, ?, datetime('now'))" end)
+
+      params =
+        Enum.flat_map(entries, fn {memory_id, embedding, org, entry_repo, origin} ->
+          [
+            Acs.Org.memory_index_id(memory_id, org),
+            org,
+            entry_repo,
+            origin,
+            Pgvector.encode(embedding)
+          ]
+        end)
+
+      {"""
+       INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+       VALUES #{values}
+       ON CONFLICT(memory_id, org) DO UPDATE SET
+         repo = excluded.repo,
+         origin = excluded.origin,
+         embedding = excluded.embedding,
+         updated_at = excluded.updated_at
+       """, params}
+    end
+  end
+
   @doc """
   Find top-k similar memories by embedding, optionally scoped to an org.
   """
