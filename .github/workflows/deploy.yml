@@ -166,7 +166,7 @@ jobs:
           else
             SERVERS="prod"
           fi
-          TARGETS="$(printf '%s' "$SERVERS" | jq -R -c 'split(",") | map(trim) | map(select(length > 0))')"
+          TARGETS="$(printf '%s' "$SERVERS" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))')"
           echo "targets=${TARGETS}" >> "$GITHUB_OUTPUT"
 
   cutover:
