@@ -32,6 +32,7 @@ defmodule Acs.Log.RetentionSweeper do
   @impl true
   def init(opts) do
     interval = Keyword.get(opts, :interval, @default_interval)
+    Acs.IdleTracker.subscribe()
     schedule(interval)
     {:ok, %{interval: interval, sweeping: false}}
   end
@@ -44,28 +45,41 @@ defmodule Acs.Log.RetentionSweeper do
   end
 
   @impl true
-  def handle_info(:tick, state) do
-    Logger.debug("[RetentionSweeper] Running log retention cleanup")
-
-    state = %{state | sweeping: true}
-
-    older_than = hours_ago(config(:log_retention_hours, 24))
-    error_older_than = days_ago(config(:error_log_retention_days, 30))
-
-    {normal_deleted, error_deleted} =
-      Acs.Log.LogRepo.delete_old(
-        older_than: older_than,
-        error_older_than: error_older_than
-      )
-
-    if normal_deleted > 0 or error_deleted > 0 do
-      Logger.info(
-        "[RetentionSweeper] Cleaned #{normal_deleted} normal + #{error_deleted} error log entries"
-      )
-    end
-
+  def handle_info(:activity, state) do
+    Logger.debug("[RetentionSweeper] Activity detected, waking to fast cadence")
     schedule(state.interval)
-    {:noreply, %{state | sweeping: false}}
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:tick, state) do
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[RetentionSweeper] Idle, sleeping")
+      schedule(Acs.IdleTracker.sleep_interval_ms())
+      {:noreply, state}
+    else
+      Logger.debug("[RetentionSweeper] Running log retention cleanup")
+
+      state = %{state | sweeping: true}
+
+      older_than = hours_ago(config(:log_retention_hours, 24))
+      error_older_than = days_ago(config(:error_log_retention_days, 30))
+
+      {normal_deleted, error_deleted} =
+        Acs.Log.LogRepo.delete_old(
+          older_than: older_than,
+          error_older_than: error_older_than
+        )
+
+      if normal_deleted > 0 or error_deleted > 0 do
+        Logger.info(
+          "[RetentionSweeper] Cleaned #{normal_deleted} normal + #{error_deleted} error log entries"
+        )
+      end
+
+      schedule(state.interval)
+      {:noreply, %{state | sweeping: false}}
+    end
   end
 
   defp schedule(interval) do

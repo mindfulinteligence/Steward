@@ -33,6 +33,8 @@ defmodule Acs.MetaHarness.Scheduler do
       "[Acs.MetaHarness.Scheduler] Starting with interval: #{div(interval, 60000)} minutes"
     )
 
+    Acs.IdleTracker.subscribe()
+
     # Run once at boot so deploy/restart isn't blind for a full interval.
     Process.send_after(self(), :run_analysis, 0)
     schedule_next_run(interval)
@@ -41,9 +43,22 @@ defmodule Acs.MetaHarness.Scheduler do
   end
 
   @impl true
-  def handle_info(:run_analysis, state) do
-    {state, _result} = run_cycle(state)
+  def handle_info(:activity, state) do
+    Logger.debug("[Acs.MetaHarness.Scheduler] Activity detected, waking to fast cadence")
+    schedule_next_run(state.interval)
     {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:run_analysis, state) do
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[Acs.MetaHarness.Scheduler] Idle, sleeping")
+      schedule_next_run(Acs.IdleTracker.sleep_interval_ms())
+      {:noreply, state}
+    else
+      {state, _result} = run_cycle(state)
+      {:noreply, state}
+    end
   end
 
   @impl true

@@ -82,6 +82,7 @@ defmodule Acs.Memory.Auditor do
   def init(_opts) do
     interval = audit_interval()
     Logger.info("[Acs.Memory.Auditor] Starting with interval: #{interval}ms")
+    Acs.IdleTracker.subscribe()
     schedule_audit(interval)
     {:ok, %{audit_in_progress: false}}
   end
@@ -93,17 +94,30 @@ defmodule Acs.Memory.Auditor do
   end
 
   @impl true
+  def handle_info(:activity, state) do
+    Logger.debug("[Acs.Memory.Auditor] Activity detected, waking to fast cadence")
+    schedule_audit(audit_interval())
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:audit, state) do
-    state = %{state | audit_in_progress: true}
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[Acs.Memory.Auditor] Idle, sleeping")
+      schedule_audit(Acs.IdleTracker.sleep_interval_ms())
+      {:noreply, state}
+    else
+      state = %{state | audit_in_progress: true}
 
-    try do
-      do_audit_cycle()
-    after
-      # Always reset flag and reschedule, even on crash
-      schedule_audit(audit_interval())
+      try do
+        do_audit_cycle()
+      after
+        # Always reset flag and reschedule, even on crash
+        schedule_audit(audit_interval())
+      end
+
+      {:noreply, %{state | audit_in_progress: false}}
     end
-
-    {:noreply, %{state | audit_in_progress: false}}
   end
 
   @impl true

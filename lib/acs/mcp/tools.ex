@@ -1291,6 +1291,8 @@ defmodule Acs.MCP.Tools do
     args = coerce_blank_agent_id(args)
 
     with :ok <- validate_agent_identity(args) do
+      Acs.IdleTracker.touch()
+
       if agent_id = Map.get(args, "agent_id") do
         case Acs.Acs.Cache.get_agent_status(agent_id) do
           {:ok, nil} ->

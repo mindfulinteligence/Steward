@@ -48,6 +48,7 @@ defmodule Acs.Specs.Auditor do
   @impl true
   def init(_opts) do
     Logger.info("[Acs.Specs.Auditor] Starting with interval: #{audit_interval()}ms")
+    Acs.IdleTracker.subscribe()
     schedule_audit()
     {:ok, %{running: false, audited: MapSet.new()}}
   end
@@ -56,11 +57,24 @@ defmodule Acs.Specs.Auditor do
   def handle_info(:audit, %{running: true} = state), do: {:noreply, state}
 
   @impl true
-  def handle_info(:audit, state) do
-    state = %{state | running: true}
-    {_results, audited} = audit_all(state.audited)
+  def handle_info(:activity, state) do
+    Logger.debug("[Acs.Specs.Auditor] Activity detected, waking to fast cadence")
     schedule_audit()
-    {:noreply, %{state | running: false, audited: audited}}
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:audit, state) do
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[Acs.Specs.Auditor] Idle, sleeping")
+      schedule_audit(Acs.IdleTracker.sleep_interval_ms())
+      {:noreply, state}
+    else
+      state = %{state | running: true}
+      {_results, audited} = audit_all(state.audited)
+      schedule_audit()
+      {:noreply, %{state | running: false, audited: audited}}
+    end
   end
 
   @impl true
@@ -109,6 +123,10 @@ defmodule Acs.Specs.Auditor do
 
   defp schedule_audit do
     Process.send_after(self(), :audit, audit_interval())
+  end
+
+  defp schedule_audit(interval) do
+    Process.send_after(self(), :audit, interval)
   end
 
   @doc """
