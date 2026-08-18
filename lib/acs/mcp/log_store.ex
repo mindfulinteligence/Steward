@@ -81,7 +81,7 @@ defmodule Acs.MCP.LogStore do
       # DB persistence (fire-and-forget, don't block ETS write). Paused while
       # idle so background log lines don't keep the Neon compute awake — the
       # ETS path and the Axiom exporter still capture everything.
-      if Application.get_env(:steward_acs, :persist_logs_to_db, true) and
+      if Application.get_env(:steward_acs, :persist_logs_to_db, false) and
            not Acs.IdleTracker.idle?() do
         persist_to_db(level, service, component, message, metadata, org)
       end
