@@ -100,8 +100,8 @@ config :steward_acs,
        System.get_env("IDLE_AFTER_MS", "900000") |> String.to_integer()
 
 config :steward_acs,
-        :idle_sleep_interval_ms,
-        System.get_env("IDLE_SLEEP_MS", "600000") |> String.to_integer()
+       :idle_sleep_interval_ms,
+       System.get_env("IDLE_SLEEP_MS", "600000") |> String.to_integer()
 
 config :steward_acs,
        :persist_logs_to_db,
