@@ -24,6 +24,7 @@ defmodule Acs.Memory.Embedding do
   # Texts per `/api/embed` request. Batching cuts HTTP round-trips and lets
   # Ollama process the array in a single model forward pass.
   @default_batch_chunk_size 8
+  @default_backfill_batch_size 32
 
   @doc """
   Returns the configured Ollama URL.
@@ -47,6 +48,17 @@ defmodule Acs.Memory.Embedding do
   def dimensions do
     Application.get_env(:steward_acs, __MODULE__, [])
     |> Keyword.get(:dimensions, @default_dimensions)
+  end
+
+  @doc """
+  Returns a stable fingerprint for the source text and embedding model.
+
+  Embeddings are reusable until either input changes.
+  """
+  @spec fingerprint(String.t(), String.t()) :: String.t()
+  def fingerprint(text, model_name \\ model()) when is_binary(text) and is_binary(model_name) do
+    :crypto.hash(:sha256, model_name <> "\0" <> text)
+    |> Base.encode16(case: :lower)
   end
 
   # Retrieval queries embedded against the corpus don't need the full text —
@@ -470,9 +482,9 @@ defmodule Acs.Memory.Embedding do
   @doc """
   Generates embeddings for all memories that don't yet have one.
 
-  Queries acs_memories for all memory IDs, queries memory_embeddings for
-  existing IDs, computes the difference, and generates embeddings for each
-  missing memory. Skips memories with status "parse_error" or "rejected".
+  Queries only memories whose content fingerprint is missing or stale, then
+  embeds them in bounded batches. Skips memories with status "parse_error" or
+  "rejected".
 
   Returns `{:ok, stats}` where stats is a map:
   `%{total: N, existing: N, embedded: N, failed: N}`
@@ -518,44 +530,34 @@ defmodule Acs.Memory.Embedding do
     # Ensure embeddings table exists before querying it
     VectorIndex.create_embeddings_table()
 
-    # 1. Get all memory IDs from acs_memories
-    all_memory_ids =
-      Repo.all(from m in Schema, select: m.id)
-      |> MapSet.new()
+    model_name = model()
 
-    total = MapSet.size(all_memory_ids)
-
-    # 2. Get all memory IDs from memory_embeddings
-    embedded_ids =
-      case Repo.query("SELECT memory_id FROM memory_embeddings") do
-        {:ok, %{rows: rows}} ->
-          rows |> Enum.map(fn [id] -> id end) |> MapSet.new()
-
-        {:error, _} ->
-          # Table might not exist yet — treat as empty
-          MapSet.new()
-      end
-
-    existing = MapSet.size(embedded_ids)
-
-    # 3. Find memories without embeddings
-    missing_ids = MapSet.difference(all_memory_ids, embedded_ids)
-
-    # 4. Load full memories and filter out parse_error/rejected
+    # Keep the candidate query in the database. Existing rows are included only
+    # when their fingerprint or model is missing/stale.
     memories_to_embed =
-      missing_ids
-      |> MapSet.to_list()
-      |> then(fn ids ->
-        case ids do
-          [] -> []
-          _ -> Repo.all(from m in Schema, where: m.id in ^ids)
-        end
+      Repo.all(
+        from m in Schema,
+          left_join: e in "memory_embeddings",
+          on:
+            e.org == m.org and
+              (e.memory_id == m.id or
+                 e.memory_id == fragment("? || ':' || ?", m.org, m.id)),
+          where:
+            m.status not in ["parse_error", "rejected"] and
+              m.kind in ^embeddable_kinds(),
+          select: {m, e.content_hash, e.embedding_model}
+      )
+      |> Enum.filter(fn {schema, content_hash, embedding_model} ->
+        expected_hash = schema_to_retrieval_text(schema) |> fingerprint(model_name)
+        content_hash != expected_hash or embedding_model != model_name
       end)
-      |> Enum.reject(fn m -> m.status in ~w(parse_error rejected) end)
-      |> Enum.reject(fn m -> !(m.kind in embeddable_kinds()) end)
+      |> Enum.map(fn {schema, _content_hash, _embedding_model} -> schema end)
 
-    batch_size = 10
-    {embedded_count, failed_count} = embed_in_batches(memories_to_embed, batch_size, 0, 0)
+    total = Repo.aggregate(Schema, :count, :id)
+    existing = max(total - length(memories_to_embed), 0)
+
+    {embedded_count, failed_count} =
+      embed_in_batches(memories_to_embed, @default_backfill_batch_size)
 
     stats = %{
       total: total,
@@ -571,55 +573,44 @@ defmodule Acs.Memory.Embedding do
     {:ok, stats}
   end
 
-  defp embed_in_batches([], _batch_size, embedded, failed), do: {embedded, failed}
+  defp embed_in_batches(memories, batch_size) do
+    memories
+    |> Enum.chunk_every(batch_size)
+    |> Enum.reduce({0, 0}, fn batch, {embedded, failed} ->
+      texts = Enum.map(batch, &schema_to_retrieval_text/1)
+      results = embed_batch(texts)
 
-  defp embed_in_batches(memories, batch_size, embedded, failed) do
-    {batch, rest} = Enum.split(memories, batch_size)
+      {successes, batch_failed} =
+        batch
+        |> Enum.zip(texts)
+        |> Enum.zip(results)
+        |> Enum.reduce({[], 0}, fn
+          {{schema, text}, {:ok, embedding}}, {ok, failed_count} ->
+            {[{schema, embedding, fingerprint(text), model()} | ok], failed_count}
 
-    {batch_embedded, batch_failed, successes} =
-      Enum.reduce(batch, {0, 0, []}, fn schema, {emb_acc, fail_acc, ok} ->
-        case embed_single_memory(schema) do
-          {:ok, embedding} -> {emb_acc + 1, fail_acc, [{schema, embedding} | ok]}
-          :error -> {emb_acc, fail_acc + 1, ok}
-        end
-      end)
-
-    alias Acs.Memory.VectorIndex
-
-    if successes != [] do
-      VectorIndex.upsert_embeddings(
-        Enum.map(successes, fn {schema, embedding} ->
-          {schema.id, embedding, schema.org, schema.repo, schema.origin}
+          {{schema, _text}, {:error, reason}}, {ok, failed_count} ->
+            Logger.warning("[Embedding] Failed to embed memory #{schema.id}: #{reason}")
+            {ok, failed_count + 1}
         end)
-      )
-    end
 
-    # Sleep between batches to avoid overwhelming Ollama
-    if rest != [] do
-      Process.sleep(500)
-    end
+      if successes != [] do
+        Acs.Memory.VectorIndex.upsert_embeddings(
+          Enum.map(successes, fn {schema, embedding, content_hash, embedding_model} ->
+            {schema.id, embedding, schema.org, schema.repo, schema.origin, content_hash,
+             embedding_model}
+          end)
+        )
+      end
 
-    embed_in_batches(rest, batch_size, embedded + batch_embedded, failed + batch_failed)
+      {embedded + length(successes), failed + batch_failed}
+    end)
   end
 
-  defp embed_single_memory(schema) do
+  defp schema_to_retrieval_text(schema) do
     alias Acs.Memory.Indexer
 
-    # Convert schema to Memory struct
     attrs = Indexer.schema_to_memory_attrs(schema)
     memory = Acs.Memory.new(attrs)
-
-    # Generate retrieval text
-    retrieval_text = memory_to_retrieval_text(memory)
-
-    # Generate embedding
-    case embed_text(retrieval_text) do
-      {:ok, embedding} ->
-        {:ok, embedding}
-
-      {:error, reason} ->
-        Logger.warning("[Embedding] Failed to embed memory #{memory.id}: #{reason}")
-        :error
-    end
+    memory_to_retrieval_text(memory)
   end
 end

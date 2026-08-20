@@ -29,6 +29,13 @@ defmodule AcsWeb.Router do
     plug AcsWeb.Plugs.LoginRateLimit
   end
 
+  scope "/docs", AcsWeb do
+    pipe_through :browser
+
+    get "/", DocsController, :show
+    get "/:page", DocsController, :show
+  end
+
   scope "/", AcsWeb do
     pipe_through [:browser, :account_host, :login_rate_limit, :redirect_if_authenticated]
 

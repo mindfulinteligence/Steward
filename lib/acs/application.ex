@@ -124,6 +124,9 @@ defmodule Acs.Application do
     # to avoid Ecto sandbox conflicts with background DB queries.
     if Application.get_env(:steward_acs, :start_background_workers, true) do
       Task.start(fn ->
+        # Let the application become ready before a large corpus reaches Ollama.
+        Process.sleep(Application.get_env(:steward_acs, :embedding_backfill_delay_ms, 5_000))
+
         unless Acs.Org.multi_tenant?() do
           {:ok, count, quarantined} = Acs.Memory.Indexer.sync_all()
 

@@ -4,6 +4,10 @@
 
 **Website: [stewardacs.xyz](https://stewardacs.xyz)**
 
+**Documentation: [stewardacs.xyz/docs](https://stewardacs.xyz/docs)** — installation, configuration, development, deployment, and testing guides published from this repository.
+
+New to Steward? Start with [what Steward is, how to connect agents, and how teams use it](guides/getting-started.md).
+
 Steward ACS is an **infrastructure layer** for multi-agent coordination. It runs as a standalone Phoenix web application (port 4001) and exposes MCP (Model Context Protocol) tools that any AI agent — Claude, GPT, Llama, or any MCP-compatible client — can call directly. It does not do the work itself; it manages the agents who do.
 
 ---

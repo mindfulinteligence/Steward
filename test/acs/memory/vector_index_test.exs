@@ -47,21 +47,28 @@ defmodule Acs.Memory.VectorIndexTest do
     test "batch stores embeddings for multiple memories" do
       entries = [
         {"batch1_#{System.unique_integer([:positive])}", [1.0, 0.0, 0.0, 0.0, 0.0], "default",
-         nil, nil},
+         nil, nil, "hash1", "model"},
         {"batch2_#{System.unique_integer([:positive])}", [0.0, 1.0, 0.0, 0.0, 0.0], "default",
-         nil, nil},
+         nil, nil, "hash2", "model"},
         {"batch3_#{System.unique_integer([:positive])}", [0.0, 0.0, 1.0, 0.0, 0.0], "default",
-         nil, nil}
+         nil, nil, "hash3", "model"}
       ]
 
       assert VectorIndex.upsert_embeddings(entries) == :ok
 
       assert {:ok, %{rows: rows}} =
-               Acs.Repo.query("SELECT memory_id FROM memory_embeddings WHERE org = ?", [
-                 "default"
-               ])
+               Acs.Repo.query(
+                 "SELECT memory_id, content_hash, embedding_model FROM memory_embeddings WHERE org = ?",
+                 [
+                   "default"
+                 ]
+               )
 
       assert length(rows) == 3
+
+      assert Enum.all?(rows, fn [_memory_id, hash, model] ->
+               hash =~ "hash" and model == "model"
+             end)
     end
 
     test "batch upsert updates existing rows" do
@@ -70,7 +77,7 @@ defmodule Acs.Memory.VectorIndexTest do
       VectorIndex.upsert_embedding(memory_id, [1.0, 0.0, 0.0, 0.0, 0.0])
 
       assert VectorIndex.upsert_embeddings([
-               {memory_id, [0.0, 1.0, 0.0, 0.0, 0.0], "default", nil, nil}
+               {memory_id, [0.0, 1.0, 0.0, 0.0, 0.0], "default", nil, nil, "hash", "model"}
              ]) == :ok
 
       assert {:ok, %{rows: [[stored_id]]}} =

@@ -24,10 +24,12 @@ defmodule Acs.Memory.VectorIndex do
       repo.query("""
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           memory_id TEXT NOT NULL,
-          org TEXT NOT NULL DEFAULT 'default',
-          repo TEXT,
-          origin TEXT,
-          embedding vector(#{Pgvector.dimensions()}) NOT NULL,
+           org TEXT NOT NULL DEFAULT 'default',
+           repo TEXT,
+           origin TEXT,
+           content_hash TEXT,
+           embedding_model TEXT,
+           embedding vector(#{Pgvector.dimensions()}) NOT NULL,
           updated_at TIMESTAMPTZ DEFAULT NOW(),
           PRIMARY KEY (memory_id, org)
         )
@@ -41,10 +43,12 @@ defmodule Acs.Memory.VectorIndex do
       repo.query("""
         CREATE TABLE IF NOT EXISTS #{@table_name} (
           memory_id TEXT NOT NULL,
-          org TEXT NOT NULL DEFAULT 'default',
-          repo TEXT,
-          origin TEXT,
-          embedding TEXT NOT NULL,
+           org TEXT NOT NULL DEFAULT 'default',
+           repo TEXT,
+           origin TEXT,
+           content_hash TEXT,
+           embedding_model TEXT,
+           embedding TEXT NOT NULL,
           updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
           PRIMARY KEY (memory_id, org)
         )
@@ -113,7 +117,8 @@ defmodule Acs.Memory.VectorIndex do
   @doc """
   Batch store or update embeddings for multiple memories.
 
-  Entries are `{memory_id, embedding, org, repo, origin}` tuples. Rows are
+  Entries are `{memory_id, embedding, org, repo, origin, content_hash,
+  embedding_model}` tuples. Rows are
   upserted in multi-row statements (chunked to respect SQLite's parameter
   limit) instead of one round-trip per memory.
   """
@@ -143,52 +148,77 @@ defmodule Acs.Memory.VectorIndex do
         entries
         |> Enum.with_index(1)
         |> Enum.map_join(", ", fn {_entry, i} ->
-          p = (i - 1) * 5 + 1
-          "($#{p}, $#{p + 1}, $#{p + 2}, $#{p + 3}, ($#{p + 4}::text)::vector, NOW())"
+          p = (i - 1) * 7 + 1
+
+          "($#{p}, $#{p + 1}, $#{p + 2}, $#{p + 3}, $#{p + 4}, $#{p + 5}, ($#{p + 6}::text)::vector, NOW())"
         end)
 
       params =
-        Enum.flat_map(entries, fn {memory_id, embedding, org, entry_repo, origin} ->
+        Enum.flat_map(entries, fn {
+                                    memory_id,
+                                    embedding,
+                                    org,
+                                    entry_repo,
+                                    origin,
+                                    content_hash,
+                                    embedding_model
+                                  } ->
           [
             Acs.Org.memory_index_id(memory_id, org),
             org,
             entry_repo,
             origin,
+            content_hash,
+            embedding_model,
             Pgvector.encode(embedding)
           ]
         end)
 
       {"""
-       INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+       INSERT INTO #{@table_name} (memory_id, org, repo, origin, content_hash, embedding_model, embedding, updated_at)
        VALUES #{values}
        ON CONFLICT (memory_id, org) DO UPDATE SET
-         repo = EXCLUDED.repo,
-         origin = EXCLUDED.origin,
+          repo = EXCLUDED.repo,
+          origin = EXCLUDED.origin,
+          content_hash = EXCLUDED.content_hash,
+          embedding_model = EXCLUDED.embedding_model,
          embedding = EXCLUDED.embedding,
          updated_at = EXCLUDED.updated_at
        """, params}
     else
       values =
         entries
-        |> Enum.map_join(", ", fn _entry -> "(?, ?, ?, ?, ?, datetime('now'))" end)
+        |> Enum.map_join(", ", fn _entry -> "(?, ?, ?, ?, ?, ?, ?, datetime('now'))" end)
 
       params =
-        Enum.flat_map(entries, fn {memory_id, embedding, org, entry_repo, origin} ->
+        Enum.flat_map(entries, fn {
+                                    memory_id,
+                                    embedding,
+                                    org,
+                                    entry_repo,
+                                    origin,
+                                    content_hash,
+                                    embedding_model
+                                  } ->
           [
             Acs.Org.memory_index_id(memory_id, org),
             org,
             entry_repo,
             origin,
+            content_hash,
+            embedding_model,
             Pgvector.encode(embedding)
           ]
         end)
 
       {"""
-       INSERT INTO #{@table_name} (memory_id, org, repo, origin, embedding, updated_at)
+       INSERT INTO #{@table_name} (memory_id, org, repo, origin, content_hash, embedding_model, embedding, updated_at)
        VALUES #{values}
        ON CONFLICT(memory_id, org) DO UPDATE SET
          repo = excluded.repo,
          origin = excluded.origin,
+         content_hash = excluded.content_hash,
+         embedding_model = excluded.embedding_model,
          embedding = excluded.embedding,
          updated_at = excluded.updated_at
        """, params}
