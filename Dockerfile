@@ -16,6 +16,8 @@ COPY config config
 COPY lib lib
 COPY priv priv
 COPY assets assets
+COPY guides guides
+COPY README.md README.md
 
 RUN mix compile
 
@@ -55,6 +57,8 @@ COPY config config
 COPY lib lib
 COPY priv priv
 COPY assets assets
+COPY guides guides
+COPY README.md README.md
 
 # Include REPO_ADAPTER in the RUN so BuildKit cannot reuse a sqlite compile layer.
 RUN echo "REPO_ADAPTER=${REPO_ADAPTER}" \
