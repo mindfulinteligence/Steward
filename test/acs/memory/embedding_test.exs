@@ -65,6 +65,21 @@ defmodule Acs.Memory.EmbeddingTest do
     end
   end
 
+  describe "fingerprint/2" do
+    test "is stable for the same text and model" do
+      assert Embedding.fingerprint("memory", "model") ==
+               Embedding.fingerprint("memory", "model")
+    end
+
+    test "changes when text or model changes" do
+      refute Embedding.fingerprint("memory", "model") ==
+               Embedding.fingerprint("changed", "model")
+
+      refute Embedding.fingerprint("memory", "model") ==
+               Embedding.fingerprint("memory", "other")
+    end
+  end
+
   describe "normalize/1" do
     test "normalizes vector to unit length" do
       embedding = [3.0, 4.0]

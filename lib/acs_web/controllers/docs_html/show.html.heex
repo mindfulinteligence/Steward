@@ -1,0 +1,52 @@
+<style>
+  .docs-shell { max-width: 1180px; margin: 0 auto; padding: 0 24px 80px; }
+  .docs-header { min-height: 110px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+  .docs-brand { font: 800 1.35rem/1 var(--font-display); letter-spacing: -0.03em; }
+  .docs-brand span { color: var(--accent); }
+  .docs-github { color: var(--text-dim); text-decoration: underline; text-underline-offset: 4px; }
+  .docs-layout { display: grid; grid-template-columns: 220px minmax(0, 720px); gap: 72px; padding-top: 54px; }
+  .docs-nav { position: sticky; top: 32px; align-self: start; }
+  .docs-nav strong { display: block; margin-bottom: 14px; color: var(--muted); font: 600 .72rem/1 var(--font-mono); letter-spacing: .1em; text-transform: uppercase; }
+  .docs-nav a { display: block; margin: 2px 0; padding: 9px 12px; border-radius: var(--radius); color: var(--text-dim); }
+  .docs-nav a:hover, .docs-nav a[aria-current="page"] { background: var(--accent-subtle); color: var(--text); }
+  .docs-nav a[aria-current="page"] { box-shadow: inset 2px 0 var(--accent); }
+  .docs-copy { min-width: 0; font-size: 1.02rem; line-height: 1.75; color: var(--text-dim); }
+  .docs-copy h1 { margin-bottom: 28px; color: var(--text); font-size: clamp(2.5rem, 6vw, 4.5rem); letter-spacing: -.04em; }
+  .docs-copy h2 { margin: 56px 0 16px; padding-top: 16px; color: var(--text); font-size: 1.75rem; }
+  .docs-copy h3 { margin: 36px 0 12px; color: var(--text); font-size: 1.2rem; }
+  .docs-copy p, .docs-copy ul, .docs-copy ol, .docs-copy table, .docs-copy pre, .docs-copy blockquote { margin: 0 0 22px; }
+  .docs-copy ul, .docs-copy ol { padding-left: 24px; }
+  .docs-copy a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+  .docs-copy code { padding: .15em .35em; border: 1px solid var(--border-light); border-radius: 4px; background: var(--bg-input); color: var(--text); font-size: .88em; }
+  .docs-copy pre { overflow-x: auto; padding: 20px; border-radius: var(--radius); background: #09090b; color: var(--text); }
+  .docs-copy pre code { padding: 0; border: 0; background: none; }
+  .docs-copy table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .92rem; }
+  .docs-copy th, .docs-copy td { padding: 11px 14px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  .docs-copy th { color: var(--text); }
+  .docs-copy blockquote { padding: 14px 18px; border-left: 1px solid var(--accent); background: var(--accent-subtle); color: var(--text); }
+  .docs-copy hr { margin: 48px 0; border: 0; border-top: 1px solid var(--border); }
+  @media (max-width: 760px) {
+    .docs-header { min-height: 84px; }
+    .docs-layout { grid-template-columns: 1fr; gap: 34px; padding-top: 30px; }
+    .docs-nav { position: static; display: flex; gap: 4px; overflow-x: auto; padding-bottom: 8px; }
+    .docs-nav strong { display: none; }
+    .docs-nav a { flex: 0 0 auto; }
+    .docs-copy h1 { font-size: 2.5rem; }
+  }
+</style>
+
+<div class="docs-shell">
+  <header class="docs-header">
+    <a class="docs-brand" href="/docs">Steward<span>.</span>docs</a>
+    <a class="docs-github" href="https://github.com/NaharEmet/steward_acs">GitHub</a>
+  </header>
+  <div class="docs-layout">
+    <nav class="docs-nav" aria-label="Documentation">
+      <strong>Documentation</strong>
+      <%= for {slug, label, _path} <- @pages do %>
+        <a href={~p"/docs/#{slug}"} aria-current={slug == @active_page && "page"}><%= label %></a>
+      <% end %>
+    </nav>
+    <main class="docs-copy"><%= @content %></main>
+  </div>
+</div>

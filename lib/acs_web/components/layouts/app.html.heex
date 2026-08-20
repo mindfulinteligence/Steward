@@ -51,6 +51,7 @@
           >
             Organization
           </.link>
+          <a href="https://stewardacs.xyz/docs" class="nav-tab">Docs</a>
           <%= if String.starts_with?(nav_current_path, "/invitations/") do %>
             <span class="nav-tab active" aria-current="page">Invitation</span>
           <% end %>
@@ -66,6 +67,7 @@
           <.link navigate={~p"/memories"} class={"nav-tab #{if String.starts_with?(nav_current_path, "/memories"), do: "active"}"} aria-current={if String.starts_with?(nav_current_path, "/memories"), do: "page"}>Memories</.link>
           <.link navigate={~p"/documents"} class={"nav-tab #{if String.starts_with?(nav_current_path, "/documents"), do: "active"}"} aria-current={if String.starts_with?(nav_current_path, "/documents"), do: "page"}>Documents</.link>
           <.link navigate={~p"/skills"} class={"nav-tab #{if String.starts_with?(nav_current_path, "/skills"), do: "active"}"} aria-current={if String.starts_with?(nav_current_path, "/skills"), do: "page"}>Skills</.link>
+          <a href="https://stewardacs.xyz/docs" class="nav-tab">Docs</a>
         </nav>
       <% end %>
     </div>
