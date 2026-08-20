@@ -1,6 +1,6 @@
 {
   "name": "Steward ACS \u2014 server",
-  "description": "Host CPU/memory/disk/network (OTel hostmetrics) plus BEAM vm.metrics from the ACS Events dataset. Heartbeat gaps = downtime; vm.jump events = sudden metric jumps.",
+  "description": "Host CPU/memory/disk/network (OTel hostmetrics), BEAM vm.metrics, and memory-auditor health from the ACS Events dataset. Heartbeat gaps = downtime; vm.jump events = sudden metric jumps.",
   "owner": "X-AXIOM-EVERYONE",
   "refreshTime": 60,
   "schemaVersion": 2,
@@ -102,6 +102,30 @@
       "query": {
         "apl": "['__EVENTS_DATASET__']\n| where ['message'] == \"vm.jump\"\n| summarize c=count() by bin(_time, 1m)"
       }
+    },
+    {
+      "id": "memory_auditor_cycles",
+      "type": "TimeSeries",
+      "name": "Memory auditor cycles",
+      "query": {
+        "apl": "['__EVENTS_DATASET__']\n| where ['message'] == \"memory_auditor.cycle\"\n| summarize c=count() by bin(_time, 5m)"
+      }
+    },
+    {
+      "id": "memory_auditor_errors",
+      "type": "TimeSeries",
+      "name": "Memory auditor errors by reason",
+      "query": {
+        "apl": "['__EVENTS_DATASET__']\n| where ['message'] == \"memory_auditor.audit_error\"\n| summarize c=count() by bin(_time, 5m), ['reason']"
+      }
+    },
+    {
+      "id": "memory_auditor_top_memories",
+      "type": "Table",
+      "name": "Memory auditor errors by memory",
+      "query": {
+        "apl": "['__EVENTS_DATASET__']\n| where ['message'] == \"memory_auditor.audit_error\"\n| summarize errors=count(), last_seen=max(_time) by ['org'], ['memory_id']\n| top 20 by errors desc"
+      }
     }
   ],
   "layout": [
@@ -180,6 +204,27 @@
       "x": 10,
       "y": 9,
       "w": 2,
+      "h": 3
+    },
+    {
+      "i": "memory_auditor_cycles",
+      "x": 0,
+      "y": 12,
+      "w": 4,
+      "h": 3
+    },
+    {
+      "i": "memory_auditor_errors",
+      "x": 4,
+      "y": 12,
+      "w": 4,
+      "h": 3
+    },
+    {
+      "i": "memory_auditor_top_memories",
+      "x": 8,
+      "y": 12,
+      "w": 4,
       "h": 3
     }
   ]
