@@ -27,6 +27,7 @@ defmodule Acs.Memory.Auditor do
   alias Acs.LLM
   alias Acs.Memory.Indexer
   alias Acs.Memory.Schema
+  alias Acs.Observability.Events
   alias Acs.Repo
 
   # Default polling interval: 30 seconds
@@ -153,7 +154,7 @@ defmodule Acs.Memory.Auditor do
     Logger.info("[Acs.Memory.Auditor] Starting audit cycle")
     start_time = DateTime.utc_now()
 
-    proposed_memories = fetch_auditable_memories()
+    {proposed_memories, skipped} = fetch_auditable_memories()
 
     by_org =
       proposed_memories
@@ -162,6 +163,14 @@ defmodule Acs.Memory.Auditor do
 
     Logger.info(
       "[Acs.Memory.Auditor] Found #{length(proposed_memories)} memories to audit (concurrency: #{audit_max_concurrency()}) orgs=[#{by_org}]"
+    )
+
+    Events.info("memory_auditor.cycle",
+      component: "memory_auditor",
+      audit_event: "cycle",
+      count: length(proposed_memories),
+      skipped: skipped,
+      orgs: by_org
     )
 
     if proposed_memories == [] do
@@ -193,49 +202,65 @@ defmodule Acs.Memory.Auditor do
   defp fetch_auditable_memories do
     cooling_off_threshold = DateTime.utc_now() |> DateTime.add(-@cooling_off_seconds, :second)
 
-    Indexer.list_memories(
-      status: "proposed",
-      order_by: [asc: :created_at],
-      limit: 200,
-      org: :all,
-      system: true
-    )
-    |> Enum.reject(fn m -> !(m.kind in auditable_kinds()) end)
-    |> Enum.reject(fn m -> m.parse_error && m.parse_error != "" end)
-    |> Enum.reject(&already_llm_audited?/1)
-    |> Enum.filter(fn m ->
-      case m.created_at do
-        nil -> false
-        dt -> DateTime.compare(coerce_datetime(dt), cooling_off_threshold) == :lt
-      end
-    end)
+    memories =
+      Indexer.list_memories(
+        status: "proposed",
+        order_by: [asc: :created_at],
+        limit: 200,
+        org: :all,
+        system: true
+      )
+      |> Enum.reject(fn m -> !(m.kind in auditable_kinds()) end)
+      |> Enum.reject(fn m -> m.parse_error && m.parse_error != "" end)
+
+    {memories, skipped} =
+      Enum.reduce(memories, {[], %{}}, fn memory, {auditable, skipped} ->
+        case audit_skip_reason(memory) do
+          nil -> {[memory | auditable], skipped}
+          reason -> {auditable, Map.update(skipped, reason, 1, &(&1 + 1))}
+        end
+      end)
+
+    memories =
+      memories
+      |> Enum.reverse()
+      |> Enum.filter(fn m ->
+        case m.created_at do
+          nil -> false
+          dt -> DateTime.compare(coerce_datetime(dt), cooling_off_threshold) == :lt
+        end
+      end)
+
+    {memories, skipped}
   end
 
   # Proposed rows with a settled verdict are already handled and must not be
   # re-audited, even if the status transition was interrupted.
-  defp already_llm_audited?(memory) do
+  @doc "Returns why a proposed memory should not be audited again, or `nil`."
+  @spec audit_skip_reason(map()) :: atom() | nil
+  def audit_skip_reason(memory) when is_map(memory) do
     flags = decode_auditor_flags(memory.auditor_flags)
     verdict = Map.get(flags, "audit_verdict")
     error_count = Map.get(flags, "audit_error_count", 0)
 
     cond do
       verdict in ["approve", "reject", "human_review"] ->
-        true
+        :settled_verdict
 
       Map.get(flags, "needs_human_review") == true ->
-        true
+        :human_review
 
-      error_count > 0 ->
-        true
+      is_number(error_count) and error_count > 0 ->
+        :audit_error
 
       # Fuzzy duplicates stay `proposed` on purpose so a human can make the call,
       # but nothing else moves them off that status — without this they came back
       # every cycle and were re-flagged forever.
       is_binary(Map.get(flags, "flagged_reason")) ->
-        true
+        :flagged
 
       true ->
-        false
+        nil
     end
   end
 
@@ -890,6 +915,15 @@ defmodule Acs.Memory.Auditor do
 
         Logger.info(
           "[Acs.Memory.Auditor] Incremented audit error for #{memory_id} (count: #{current_count + 1})"
+        )
+
+        Events.warning("memory_auditor.audit_error",
+          component: "memory_auditor",
+          audit_event: "audit_error",
+          memory_id: memory_id,
+          org: memory.org,
+          audit_error_count: current_count + 1,
+          reason: reason
         )
 
         :ok

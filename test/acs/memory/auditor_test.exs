@@ -131,6 +131,29 @@ defmodule Acs.Memory.AuditorTest do
     end
   end
 
+  describe "audit skip classification" do
+    for {label, flags, expected} <- [
+          {"settled verdict", %{"audit_verdict" => "reject"}, :settled_verdict},
+          {"human review", %{"needs_human_review" => true}, :human_review},
+          {"audit error", %{"audit_error_count" => 2}, :audit_error},
+          {"flagged memory", %{"flagged_reason" => "possible duplicate"}, :flagged}
+        ] do
+      test "skips #{label}" do
+        memory = %{auditor_flags: Jason.encode!(unquote(Macro.escape(flags)))}
+        assert Auditor.audit_skip_reason(memory) == unquote(expected)
+      end
+    end
+
+    test "does not skip a proposed memory without audit flags" do
+      assert Auditor.audit_skip_reason(%{auditor_flags: nil}) == nil
+    end
+
+    test "does not crash on a string error count" do
+      memory = %{auditor_flags: Jason.encode!(%{"audit_error_count" => "2"})}
+      assert Auditor.audit_skip_reason(memory) == nil
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Integration: Memory Status Update Tests
   # ---------------------------------------------------------------------------
