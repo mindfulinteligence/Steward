@@ -211,27 +211,27 @@ defmodule Acs.Memory.Auditor do
     end)
   end
 
-  # Skip only when parked for human review / hard failures — not when a prior
-  # bug left audit_verdict=approve|reject on a still-proposed row.
+  # Proposed rows with a settled verdict are already handled and must not be
+  # re-audited, even if the status transition was interrupted.
   defp already_llm_audited?(memory) do
     flags = decode_auditor_flags(memory.auditor_flags)
     verdict = Map.get(flags, "audit_verdict")
     error_count = Map.get(flags, "audit_error_count", 0)
 
     cond do
-      verdict == "human_review" ->
+      verdict in ["approve", "reject", "human_review"] ->
         true
 
-      Map.get(flags, "needs_human_review") == true and verdict not in ["approve", "reject"] ->
+      Map.get(flags, "needs_human_review") == true ->
         true
 
-      error_count > 0 and verdict not in ["approve", "reject"] ->
+      error_count > 0 ->
         true
 
       # Fuzzy duplicates stay `proposed` on purpose so a human can make the call,
       # but nothing else moves them off that status — without this they came back
       # every cycle and were re-flagged forever.
-      is_binary(Map.get(flags, "flagged_reason")) and verdict not in ["approve", "reject"] ->
+      is_binary(Map.get(flags, "flagged_reason")) ->
         true
 
       true ->
