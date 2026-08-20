@@ -1,11 +1,11 @@
 defmodule AcsWeb.DocsControllerTest do
   use AcsWeb.ConnCase, async: true
 
-  test "serves public documentation", %{conn: conn} do
+  test "serves human-facing connection documentation", %{conn: conn} do
     conn = get(conn, "/docs/install")
 
-    assert html_response(conn, 200) =~ "ACS Installer Guide"
-    assert html_response(conn, 200) =~ "Default Config"
+    assert html_response(conn, 200) =~ "Connect an agent"
+    assert html_response(conn, 200) =~ "MCP-compatible agents"
   end
 
   test "explains Steward to people before the technical reference", %{conn: conn} do
@@ -13,8 +13,8 @@ defmodule AcsWeb.DocsControllerTest do
 
     body = html_response(conn, 200)
     assert body =~ "shared operating system for AI agents"
-    assert body =~ "Connect a coding agent"
-    assert body =~ "How this helps a team"
+    assert body =~ "Why teams use it"
+    assert body =~ "How it fits"
   end
 
   test "redirects unknown pages to the overview", %{conn: conn} do

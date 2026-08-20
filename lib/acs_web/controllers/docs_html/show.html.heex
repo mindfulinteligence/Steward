@@ -43,7 +43,7 @@
   <div class="docs-layout">
     <nav class="docs-nav" aria-label="Documentation">
       <strong>Documentation</strong>
-      <%= for {slug, label, _path} <- @pages do %>
+      <%= for {slug, label} <- @pages do %>
         <a href={~p"/docs/#{slug}"} aria-current={slug == @active_page && "page"}><%= label %></a>
       <% end %>
     </nav>
