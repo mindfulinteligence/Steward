@@ -8,9 +8,8 @@ defmodule Acs.Memory.AuditorTest do
   - GenServer lifecycle
   - Supervision tree verification
 
-  Note: Full audit cycle tests are limited because the Auditor module
-  has a bug using `inserted_at` instead of `created_at` in fetch_auditable_memories/0.
-  This bug causes the Auditor GenServer to crash when trying to process memories.
+  Full audit cycle tests are limited because the Auditor depends on the
+  configured LLM provider and background scheduling.
   """
 
   use Acs.DataCase, async: false
