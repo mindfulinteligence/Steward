@@ -74,32 +74,33 @@ defmodule Acs.Acs.Cache do
   filtering by default would leave other tenants' ghosts forever (e.g. safetyconnect).
   """
   def handle_info(:sweep_stale_agents, state) do
-    Repo.transaction(fn ->
-      cutoff = DateTime.add(DateTime.utc_now(), -60, :second)
-      # ponytail: full ETS scan every 30s; ceiling is tens of agents per tenant
-      statuses = get_all_agent_statuses(:all)
+    cutoff = DateTime.add(DateTime.utc_now(), -60, :second)
+    # ponytail: full ETS scan every 30s; ceiling is tens of agents per tenant
+    statuses = get_all_agent_statuses(:all)
 
-      stale =
-        Enum.filter(statuses, fn s ->
-          case s[:updated_at] do
-            nil -> true
-            dt -> DateTime.compare(dt, cutoff) == :lt
-          end
-        end)
-
-      Enum.each(stale, fn s ->
-        :ets.delete(@agent_status_table, {s.org, s.agent_id})
-
-        Repo.delete_all(
-          from(t in Acs.Acs.AgentStatus,
-            where: t.agent_id == ^s.agent_id and t.org == ^s.org
-          )
-        )
+    stale =
+      Enum.filter(statuses, fn s ->
+        case s[:updated_at] do
+          nil -> true
+          dt -> DateTime.compare(dt, cutoff) == :lt
+        end
       end)
 
-      if stale != [],
-        do: Logger.info("[Acs.Cache] Sweep: removed #{length(stale)} stale agents")
-    end)
+    if stale != [] do
+      Repo.transaction(fn ->
+        Enum.each(stale, fn s ->
+          :ets.delete(@agent_status_table, {s.org, s.agent_id})
+
+          Repo.delete_all(
+            from(t in Acs.Acs.AgentStatus,
+              where: t.agent_id == ^s.agent_id and t.org == ^s.org
+            )
+          )
+        end)
+
+        Logger.info("[Acs.Cache] Sweep: removed #{length(stale)} stale agents")
+      end)
+    end
 
     schedule_sweep()
     {:noreply, state}

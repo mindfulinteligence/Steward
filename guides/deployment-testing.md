@@ -40,7 +40,7 @@ curl -fsS http://127.0.0.1:4001/mcp/health
 Push to `dev` (and PRs targeting `prod`) triggers [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Push/promote to `prod` runs the **same** jobs as Deploy’s **CI gate** before build/cutover (no parallel ungated deploy).
 
 - `readiness` — runs `scripts/repo-readiness.sh` against the Postgres 16 service. It checks whitespace, formatting, warnings-as-errors compilation, Credo, tests, a production release build, and the disposable MCP tool smoke.
-- Production containers do not run a recurring Docker `/mcp/health` check. `scripts/deploy.sh` performs a bounded readiness probe during cutover, and the post-deploy smoke runs once.
+- Production containers do not run recurring database probes: `/mcp/health` is DB-free, and the stale-agent sweep opens a transaction only when it has cleanup work. `scripts/deploy.sh` performs a bounded readiness probe during cutover, and the post-deploy smoke runs once.
 
 Run the exact CI contract locally before pushing:
 
