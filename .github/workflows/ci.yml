@@ -9,7 +9,7 @@ on:
   workflow_call:
 
 jobs:
-  test:
+  readiness:
     runs-on: ubuntu-latest
 
     services:
@@ -35,133 +35,24 @@ jobs:
           otp-version: "26.2.5"
           elixir-version: "1.17.3"
 
-      - name: Cache deps
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-mix-readiness-${{ hashFiles('**/mix.lock') }}
           restore-keys: |
+            ${{ runner.os }}-mix-readiness-
             ${{ runner.os }}-mix-
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
-      - name: Install deps
+      - name: Install dependencies
         run: mix deps.get
 
-      - name: Compile
-        run: mix compile
-
-      - name: Run tests
-        run: mix test
+      - name: Run repository readiness checks
+        run: ./scripts/repo-readiness.sh
         env:
-          DATABASE_URL: ecto://postgres:postgres@localhost:5432/acs_test
-
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: "26.2.5"
-          elixir-version: "1.17.3"
-
-      - name: Cache deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-prod-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-prod-
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-
-      - name: Build production release
-        run: mix deps.get --only prod && mix release
-        env:
-          MIX_ENV: prod
-          REPO_ADAPTER: postgres
-          SECRET_KEY_BASE: ci_secret_key_base_for_release_build_only_not_for_production_use_1234567890
-          DATABASE_URL: ecto://postgres:ci_release_password@localhost:5432/acs_prod
-          PGPASSWORD: ci_release_password
-          MCP_API_KEY: ci_mcp_key
-          ACS_PASSWORD: ci_dashboard_password
-          PHX_HOST: localhost
-          COOKIE_SIGNING_SALT: ci_cookie_signing_salt
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: "26.2.5"
-          elixir-version: "1.17.3"
-
-      - name: Cache deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-
-
-      - name: Install deps
-        run: mix deps.get
-
-      - name: Check formatting
-        run: mix format --check-formatted
-
-      - name: Compile
-        run: mix compile --warnings-as-errors
-
-      - name: Run credo
-        run: mix credo --strict
-
-  # Boots a fresh disposable local ACS and calls every MCP tool over the wire.
-  # Catches tool crashes (ToolRegistry.safe_execute "Tool execution failed"),
-  # transport breakage, and new tools missing from the smoke. Same flow as
-  # scripts/local-tool-smoke.sh used on a developer machine.
-  tool-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: erlef/setup-beam@v1
-        with:
-          otp-version: "26.2.5"
-          elixir-version: "1.17.3"
-
-      - name: Cache deps
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-
-
-      - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-
-      - name: Install deps
-        run: mix deps.get
-
-      - name: Compile
-        run: mix compile
-
-      - name: Run MCP tool smoke on a fresh disposable instance
-        run: ./scripts/local-tool-smoke.sh
-        env:
-          MCP_API_KEY: ci_tool_smoke_key
-          PORT: 4101
+          TEST_DATABASE_URL: ecto://postgres:postgres@localhost:5432/acs_test
+          RELEASE_DATABASE_URL: ecto://postgres:ci_release_password@localhost:5432/acs_prod

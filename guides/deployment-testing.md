@@ -11,7 +11,7 @@ Three layers. Agents must know which layer they are changing.
 
 | Layer | Runs where | What it proves | Primary files |
 |-------|------------|----------------|---------------|
-| **CI (dev)** | GitHub Actions on push to `dev` (and PRs to `prod`) | Unit/integration tests, prod release compiles, Credo | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
+| **CI (dev)** | GitHub Actions on push to `dev` (and PRs to `prod`) | The complete repository readiness contract | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`scripts/repo-readiness.sh`](../scripts/repo-readiness.sh) |
 | **CI gate (prod deploy)** | First job of Deploy on push to `prod` / dispatch | Same CI must succeed before image build or cutover | [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml) calls CI via `workflow_call` |
 | **Local system** | Laptop | Full app boots and MCP/API behave with real `.env` | `mix phx.server` or `docker compose up -d` |
 | **Post-deploy smoke** | After cutover (Actions / `deploy.sh`) | Live host healthy + optional chat inventory | [`scripts/deploy.sh`](../scripts/deploy.sh), [`scripts/smoke-chat-tools.sh`](../scripts/smoke-chat-tools.sh) |
@@ -39,9 +39,18 @@ curl -fsS http://127.0.0.1:4001/mcp/health
 
 Push to `dev` (and PRs targeting `prod`) triggers [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). Push/promote to `prod` runs the **same** jobs as Deploy’s **CI gate** before build/cutover (no parallel ungated deploy).
 
-- `test` — Postgres 16 service + `mix test` (`DATABASE_URL` to that service)
-- `release` — `MIX_ENV=prod` + `REPO_ADAPTER=postgres` release build
-- `lint` — `mix format --check-formatted` + `mix compile --warnings-as-errors` + `mix credo --strict`
+- `readiness` — runs `scripts/repo-readiness.sh` against the Postgres 16 service. It checks whitespace, formatting, warnings-as-errors compilation, Credo, tests, a production release build, and the disposable MCP tool smoke.
+
+Run the exact CI contract locally before pushing:
+
+```bash
+./scripts/repo-readiness.sh
+```
+
+The test step expects local Postgres at `localhost:5432` by default. Override it
+with `TEST_DATABASE_URL`; override release-build configuration with
+`RELEASE_DATABASE_URL`. The release defaults are CI-only placeholders and are
+not production credentials.
 
 Agents: after pushing to `dev`, check `gh run list --branch dev --workflow=CI` / `gh run watch`. On Deploy, a red CI gate means no image push and no cutover.
 
@@ -114,7 +123,7 @@ Pick the smallest layer that can catch the bug. Update docs/skill in the same ch
 | Cutover + health/DCR/chat smoke | `scripts/deploy.sh`, `scripts/smoke-chat-tools.sh` | This guide + deployment skill |
 | Slot/upstream helpers | `scripts/lib/acs_bluegreen.sh`, `scripts/check-bluegreen.sh` | deployment skill |
 | Chat allowlist source of truth | `lib/acs/mcp/core_tool_roles.ex` | tests + chat prompt |
-| Format gate | `mix format --check-formatted` in `ci.yml` `lint` job + `scripts/git-hooks/pre-commit` | This guide |
+| Repository readiness gate | `scripts/repo-readiness.sh` in CI + optional `scripts/git-hooks/pre-commit` format hook | This guide |
 
 ### Pre-commit format hook (local)
 

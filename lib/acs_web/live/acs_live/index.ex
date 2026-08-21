@@ -34,7 +34,8 @@ defmodule AcsWeb.AcsLive.Index do
         mcp_endpoints: AcsWeb.McpUrls.endpoints(),
         chat_system_prompt: AcsWeb.McpUrls.chat_system_prompt(:always),
         chat_system_prompt_opt_in: AcsWeb.McpUrls.chat_system_prompt(:opt_in),
-        coding_system_prompt: AcsWeb.McpUrls.coding_system_prompt()
+        coding_system_prompt: AcsWeb.McpUrls.coding_system_prompt(),
+        project_setup_prompt: AcsWeb.McpUrls.project_setup_prompt()
       )
 
     socket =
@@ -65,7 +66,10 @@ defmodule AcsWeb.AcsLive.Index do
      socket
      |> assign(current_path: path, selected_status: selected_status)
      |> load_data()
-     |> assign(:mcp_endpoints, AcsWeb.McpUrls.endpoints(uri))}
+     |> assign(
+       mcp_endpoints: AcsWeb.McpUrls.endpoints(uri),
+       project_setup_prompt: AcsWeb.McpUrls.project_setup_prompt(uri)
+     )}
   end
 
   @impl true
@@ -236,6 +240,26 @@ defmodule AcsWeb.AcsLive.Index do
         </summary>
 
         <div class="mcp-connectors-body">
+          <div class="card-elevated" style="padding: 16px; margin-bottom: 16px;">
+            <p class="mcp-connector-step-label">Fast project setup</p>
+            <p class="text-dim" style="font-size: 0.8rem; margin: 6px 0 12px;">
+              Open your coding agent in the project, paste one prompt, and let it merge the MCP and agent files for this organization.
+            </p>
+            <button
+              id="copy-project-setup-prompt"
+              type="button"
+              class="btn btn-primary"
+              data-copy-target="project-setup-prompt"
+              data-copy-status="project-setup-prompt-copy-status"
+              data-copy-label="Copy project setup prompt"
+              data-copy-success="Project setup prompt copied."
+            >
+              Copy project setup prompt
+            </button>
+            <textarea id="project-setup-prompt" class="sr-only" readonly tabindex="-1" aria-hidden="true"><%= @project_setup_prompt %></textarea>
+            <p id="project-setup-prompt-copy-status" class="form-hint sr-only" aria-live="polite"></p>
+          </div>
+
           <p class="mcp-connectors-note text-dim">
             Two steps each: copy the connector URL, then paste the instructions into
             <code>AGENTS.md</code> (coding) or Claude system prompt (chat).
@@ -363,7 +387,7 @@ defmodule AcsWeb.AcsLive.Index do
             <div class="card-elevated" style="padding: 16px;">
               <strong>1. Configure MCP</strong>
               <p class="text-dim" style="font-size: 0.8rem; margin-top: 6px;">
-                Open <a href="#mcp-connectors" class="text-accent">Agent URLs</a> above — copy the URL, then <strong>Copy into AGENTS.md</strong> or <strong>Copy this into your Claude system prompt</strong>.
+                Open <a href="#mcp-connectors" class="text-accent">Agent URLs</a> above and choose <strong>Copy project setup prompt</strong>. Paste it into a coding agent opened at your project root.
               </p>
             </div>
             <div class="card-elevated" style="padding: 16px;">

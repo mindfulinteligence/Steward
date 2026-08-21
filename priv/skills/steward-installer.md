@@ -14,6 +14,18 @@ tags: ["install", "setup", "onboarding", "guide"]
 
 When setting up ACS for a new user, walk through these steps in order.
 
+## Hosted invitation shortcut
+
+For a user invited to an existing hosted organization, do not install another ACS instance:
+
+1. Accept the invitation and open the organization workspace.
+2. Expand **Agent URLs** and click **Copy project setup prompt**.
+3. Open the coding agent at the project root and paste the prompt.
+4. Review the agent's merged MCP and `AGENTS.md` / `AGENTS_STEWARD.md` changes.
+5. Restart or reconnect the client, complete browser OAuth, and ask it to call `get_started(audience: "coding")`.
+
+Verification: the response names the invited organization and exposes coding tools. If the connector is unavailable, confirm the prompt's organization URL and restart the client. If the agent proposes replacing existing MCP or agent files, stop it and require a merge.
+
 ## Step 1: Check if ACS is Available
 
 Call `steward_get_present_status(agent_id: "YourName")`.
