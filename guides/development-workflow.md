@@ -70,6 +70,10 @@ url = "https://anantha.stewardacs.xyz/mcp/sse"
 
 Follow `AGENTS_STEWARD.md` "After Work": save to the **remote** instance (skill_save / specs_propose / save_memory), then `steward_release_work` + `steward_submit_task_feedback` last.
 
+ACS uses the authenticated session identity for task operations; caller-supplied agent names are ignored for non-admin callers. Active tool calls renew the current task lease, and an expired claim can still be released by its authenticated creator. The first confirmed file lock also becomes the default repository and scope for later knowledge retrieval unless the caller explicitly supplies another scope.
+
+Duplicate memory writes return the existing memory with an `update_available` prompt. Ask the user before calling `update_memory`; duplicate writes are not stored again.
+
 ## Troubleshooting
 
 - **"Authorization server issuer mismatch: expected https://anantha.stewardacs.xyz/, received https://dev-jw5wgp2b.us.auth0.com/"** — the authorization-server metadata `issuer` must equal the host the metadata was fetched from (RFC 8414 §2.1). Caddy must serve `"issuer":"https://{host}/"`, not `{$AUTH0_DOMAIN}`. Fix in `Caddyfile.multitenant`, then redeploy/reload Caddy. Server-side JWT validation is unaffected (it validates against the Auth0 issuer directly).

@@ -200,48 +200,33 @@ defmodule Acs.MCP.Tools.CoreHandlers do
     attrs = %{
       "title" => title,
       "description" => args["description"] || "",
-      "file_paths" => args["file_paths"] || []
+      "file_paths" => args["file_paths"] || [],
+      "status" => if(claim, do: "in_progress", else: "todo")
     }
 
     case Acs.create_task(attrs, agent_id) do
       {:ok, task} ->
         if claim do
-          case Acs.claim_task(task.id, agent_id, claim_guidance_opts(args, mode)) do
-            {:ok, _task, guidance} ->
-              {:ok,
-               %{status: "claimed", task_id: task.slug, title: task.title, guidance: guidance}}
+          guidance =
+            Acs.Memory.Guidance.for_task(task.id, claim_guidance_opts(args, mode))
 
-            {:error, reason} ->
-              {:ok,
-               %{status: "created", task_id: task.slug, title: task.title, claim_error: reason}}
-          end
+          {:ok, %{status: "claimed", task_id: task.slug, title: task.title, guidance: guidance}}
         else
           {:ok, %{status: "ok", task_id: task.slug, title: task.title}}
         end
 
       {:warn, task, similar} ->
         if claim do
-          case Acs.claim_task(task.id, agent_id, claim_guidance_opts(args, mode)) do
-            {:ok, _task, guidance} ->
-              {:ok,
-               %{
-                 status: "claimed",
-                 task_id: task.slug,
-                 title: task.title,
-                 guidance: guidance,
-                 similar_tasks: similar
-               }}
+          guidance = Acs.Memory.Guidance.for_task(task.id, claim_guidance_opts(args, mode))
 
-            {:error, reason} ->
-              {:ok,
-               %{
-                 status: "created",
-                 task_id: task.slug,
-                 title: task.title,
-                 similar_tasks: similar,
-                 claim_error: reason
-               }}
-          end
+          {:ok,
+           %{
+             status: "claimed",
+             task_id: task.slug,
+             title: task.title,
+             guidance: guidance,
+             similar_tasks: similar
+           }}
         else
           {:ok,
            %{status: "warning", task_id: task.slug, title: task.title, similar_tasks: similar}}
@@ -328,6 +313,11 @@ defmodule Acs.MCP.Tools.CoreHandlers do
 
     case lock_result do
       {:ok, result} ->
+        Acs.MCP.ClientSession.set_working_scope(
+          Acs.ClaimContext.scope_from_file_paths([file_path]),
+          args["_auth_agent_id"] || agent_id
+        )
+
         Acs.MCP.ClientSession.set_working_repo(
           result[:repo],
           args["workspace_id"] || args["_auth_workspace_id"],
