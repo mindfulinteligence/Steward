@@ -22,7 +22,7 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 1. **CI** — `.github/workflows/ci.yml` on `dev` (+ PRs to `prod`): runs the complete `scripts/repo-readiness.sh` contract. Does not run multitenant compose.
 2. **CI gate on Deploy** — same CI via `workflow_call` before `build-push` / cutover on `prod`. Failures block ship automatically (`skip_ci` is break-glass only).
 3. **Local system** — `mix phx.server` or `docker compose up -d` on :4001 for live verification.
-4. **Post-deploy smoke** — `deploy.sh` after cutover: `/mcp/health`, optional fixed DCR, optional chat `tools/list` vs live `CoreToolRoles.chat_surface/0`.
+4. **Post-deploy smoke** — `deploy.sh` after cutover: one bounded `/mcp/health` probe, optional fixed DCR, optional chat `tools/list` vs live `CoreToolRoles.chat_surface/0`.
 
 ## Setup (once) — do this if missing
 
@@ -45,6 +45,10 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 2. Create a collaborator+ developer API key in prod → store as `SMOKE_API_KEY` (recommended). Without it, chat inventory smoke is skipped.
 3. Confirm Deploy workflow cutover still runs health (+ DCR when configured).
 4. Optional local helper: `./scripts/check-bluegreen.sh`.
+
+Production compose disables Docker's recurring `/mcp/health` healthcheck so idle
+Neon computes are not continuously awakened. Deploy cutover uses a bounded
+`docker exec` probe instead.
 
 ## Verify a feature on `dev`
 
