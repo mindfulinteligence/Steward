@@ -24,6 +24,10 @@
 }
 
 # mind_chat — MIND questionnaire chatbot app (chat_mind container)
+mind.fourthsector.org.bt {
+    reverse_proxy chat_mind:4000
+}
+
 mind_chat.{$BASE_DOMAIN} {
     tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     reverse_proxy chat_mind:4000
