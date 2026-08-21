@@ -14,6 +14,10 @@ tags: ["install", "setup", "onboarding", "guide"]
 
 When setting up ACS for a new user, walk through these steps in order.
 
+Canonical human guide: `https://stewardacs.xyz/docs/install`. Use the hosted
+workspace path below unless the user explicitly wants to operate a private
+instance.
+
 ## Hosted invitation shortcut
 
 For a user invited to an existing hosted organization, do not install another ACS instance:
@@ -23,6 +27,11 @@ For a user invited to an existing hosted organization, do not install another AC
 3. Open the coding agent at the project root and paste the prompt.
 4. Review the agent's merged MCP and `AGENTS.md` / `AGENTS_STEWARD.md` changes.
 5. Restart or reconnect the client, complete browser OAuth, and ask it to call `get_started(audience: "coding")`.
+
+The coding URL is `https://<workspace-host>/mcp/sse`; the chat URL is
+`https://<workspace-host>/mcp/chat/sse`. Hosted connections use browser OAuth
+and must not add API-key headers. Copy system prompts from **Agent URLs** or
+`https://<workspace-host>/settings/prompts` instead of reconstructing them.
 
 Verification: the response names the invited organization and exposes coding tools. If the connector is unavailable, confirm the prompt's organization URL and restart the client. If the agent proposes replacing existing MCP or agent files, stop it and require a merge.
 
@@ -69,10 +78,12 @@ Add to `.gitignore`:
 ```
 steward.env
 steward.docker-compose.yml
-AGENTS_STEWARD.md
 var/
 acs_data/
 ```
+
+`AGENTS_STEWARD.md` may be committed when it contains no secrets. Merge its
+reference into an existing `AGENTS.md`; never replace unrelated instructions.
 
 Launch: `docker compose --env-file steward.env -f steward.docker-compose.yml up -d`
 
