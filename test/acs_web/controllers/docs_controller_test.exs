@@ -21,4 +21,13 @@ defmodule AcsWeb.DocsControllerTest do
   test "redirects unknown pages to the overview", %{conn: conn} do
     assert redirected_to(get(conn, "/docs/not-a-page")) == "/docs/overview"
   end
+
+  test "release image includes every external documentation source" do
+    dockerfile = File.read!("Dockerfile")
+    dockerignore = File.read!(".dockerignore")
+
+    assert dockerfile =~ "COPY guides guides"
+    assert dockerfile =~ "COPY README.md README.md"
+    refute dockerignore =~ ~r/^guides$/m
+  end
 end

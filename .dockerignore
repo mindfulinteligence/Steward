@@ -17,7 +17,6 @@ certs
 docker/*
 !docker/entrypoint.sh
 scripts
-guides
 site
 plans
 *.md
