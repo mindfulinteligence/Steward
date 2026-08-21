@@ -92,11 +92,5 @@ approval_mode = "approve"
 url = "https://mcp.axiom.co/mcp"
 
 [mcp_servers.infisical]
-command = "npx"
-args = ["-y", "@infisical/mcp"]
-
-[mcp_servers.infisical.env]
-INFISICAL_HOST_URL = "https://app.infisical.com"
-INFISICAL_AUTH_METHOD = "universal-auth"
-INFISICAL_UNIVERSAL_AUTH_CLIENT_ID = "{env:INFISICAL_UNIVERSAL_AUTH_CLIENT_ID}"
-INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET = "{env:INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET}"
+command = "sh"
+args = ["-c", "INFISICAL_HOST_URL=https://app.infisical.com INFISICAL_AUTH_METHOD=universal-auth INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=$(cat .opencode/infisical-client-id) INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=$(cat .opencode/infisical-client-secret) exec npx -y @infisical/mcp"]
