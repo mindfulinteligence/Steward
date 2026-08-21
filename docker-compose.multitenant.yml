@@ -86,12 +86,11 @@ x-steward-acs: &steward_acs
     RESEND_FROM_EMAIL: "${RESEND_FROM_EMAIL:-}"
   volumes:
     - acs_data:/data
+  # Do not run a recurring container healthcheck in production. It creates a
+  # request every 10 seconds and is unnecessary after cutover; deploy.sh uses
+  # a bounded one-time readiness probe instead.
   healthcheck:
-    test: ["CMD", "curl", "-f", "http://localhost:4001/mcp/health"]
-    interval: 10s
-    timeout: 5s
-    retries: 3
-    start_period: 20s
+    disable: true
 
 services:
   caddy:

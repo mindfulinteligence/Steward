@@ -189,8 +189,12 @@ wait_healthy() {
   local name="$1" status=starting
   local attempts=$((HEALTH_WAIT_SECONDS / 2))
   for _ in $(seq 1 "$attempts"); do
-    status=$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo starting)
-    [[ "$status" == "healthy" ]] && break
+    if docker exec "$name" sh -c 'curl -fsS --max-time 3 http://127.0.0.1:4001/mcp/health >/dev/null' 2>/dev/null; then
+      status=healthy
+      break
+    fi
+
+    status=starting
     sleep 2
   done
   echo "$status"
