@@ -19,7 +19,7 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 
 ## Layers (do not confuse)
 
-1. **CI** — `.github/workflows/ci.yml` on `dev` (+ PRs to `prod`): `mix test`, prod release build, Credo. Does not run multitenant compose.
+1. **CI** — `.github/workflows/ci.yml` on `dev` (+ PRs to `prod`): runs the complete `scripts/repo-readiness.sh` contract. Does not run multitenant compose.
 2. **CI gate on Deploy** — same CI via `workflow_call` before `build-push` / cutover on `prod`. Failures block ship automatically (`skip_ci` is break-glass only).
 3. **Local system** — `mix phx.server` or `docker compose up -d` on :4001 for live verification.
 4. **Post-deploy smoke** — `deploy.sh` after cutover: `/mcp/health`, optional fixed DCR, optional chat `tools/list` vs live `CoreToolRoles.chat_surface/0`.
@@ -36,7 +36,8 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 ### CI
 
 1. No special secrets for default CI.
-2. After `git push -u origin HEAD` on `dev`: `gh run list --branch dev --workflow=CI` and watch until green.
+2. Before pushing, run `./scripts/repo-readiness.sh` locally.
+3. After `git push -u origin HEAD` on `dev`: `gh run list --branch dev --workflow=CI` and watch until green.
 
 ### Prod smoke secrets (GitHub Environment **prod**)
 
@@ -49,9 +50,10 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 
 1. Confirm branch is `dev` (do not switch branches yourself).
 2. `mix test` on touched tests.
-3. If the bug only shows with a live process: start local system, hit health, exercise MCP/UI.
-4. Push `dev` → CI green.
-5. Promote to `prod` only when the user asks to deploy.
+3. Run `./scripts/repo-readiness.sh` before pushing.
+4. If the bug only shows with a live process: start local system, hit health, exercise MCP/UI.
+5. Push `dev` → CI green.
+6. Promote to `prod` only when the user asks to deploy.
 
 ## New features — which layer to extend
 
@@ -77,8 +79,9 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 ### New CI dependency / OTP-Elixir pin / Postgres
 
 1. Edit `.github/workflows/ci.yml` install or service blocks.
-2. If the release image needs it: `Dockerfile` + confirm CI `release` job.
-3. Note agent-facing setup in `guides/deployment-testing.md` if locals need the same.
+2. Keep local and CI validation in sync through `scripts/repo-readiness.sh`.
+3. If the release image needs it: `Dockerfile` + confirm the readiness job.
+4. Note agent-facing setup in `guides/deployment-testing.md` if locals need the same.
 
 ### Blue/green math
 
@@ -89,7 +92,7 @@ Human index: [`guides/deployment-testing.md`](../../guides/deployment-testing.md
 
 | Touch | Also update |
 |-------|-------------|
-| `ci.yml` | `guides/deployment-testing.md` if steps change |
+| `ci.yml` / `scripts/repo-readiness.sh` | `guides/deployment-testing.md` and this skill if steps change |
 | `deploy.yml` / cutover | `guides/deployment.md`, `priv/skills/deployment.md` |
 | `deploy.sh` / `smoke-chat-tools.sh` | this skill + deployment-testing guide |
 | `core_tool_roles.ex` | tests + chat prompt |

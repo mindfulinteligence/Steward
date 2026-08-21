@@ -104,6 +104,13 @@ config :steward_acs,
        System.get_env("IDLE_SLEEP_MS", "600000") |> String.to_integer()
 
 config :steward_acs,
+       :embedding_backfill_enabled,
+       System.get_env(
+         "EMBEDDING_BACKFILL_ENABLED",
+         if(config_env() == :prod, do: "false", else: "true")
+       ) in ~w(true 1 yes)
+
+config :steward_acs,
        :persist_logs_to_db,
        System.get_env("PERSIST_LOGS_TO_DB", "false") in ~w(true 1 yes)
 
