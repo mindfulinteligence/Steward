@@ -4,6 +4,27 @@ defmodule Acs.Acs.CacheStaleSweepTest do
   alias Acs.Acs.Cache
   alias Acs.Acs.AgentStatus
 
+  test "empty stale sweep does not query the database" do
+    handler = "cache-empty-sweep-#{System.unique_integer()}"
+    test_pid = self()
+
+    :telemetry.attach(
+      handler,
+      [:steward_acs, :repo, :query],
+      fn _, _, _, _ ->
+        send(test_pid, :repo_query)
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    send(Cache, :sweep_stale_agents)
+    :sys.get_state(Cache)
+
+    refute_receive :repo_query
+  end
+
   test "stale sweeper removes agents from non-default orgs" do
     org = "safetyconnect"
     agent_id = "email|ghost-agent-test"
