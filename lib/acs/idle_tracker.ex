@@ -15,7 +15,7 @@ defmodule Acs.IdleTracker do
 
   Config:
 
-      config :steward_acs, :idle_after_ms, 900_000          # IDLE_AFTER_MS
+      config :steward_acs, :idle_after_ms, 60_000           # IDLE_AFTER_MS
       config :steward_acs, :idle_sleep_interval_ms, 600_000 # IDLE_SLEEP_MS
   """
 
@@ -25,7 +25,7 @@ defmodule Acs.IdleTracker do
   @table_name :acs_idle_tracker
   @topic "acs:idle_tracker"
 
-  @default_idle_after_ms 900_000
+  @default_idle_after_ms 60_000
   @default_sleep_interval_ms 600_000
 
   def start_link(_opts \\ []) do

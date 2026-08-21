@@ -97,7 +97,7 @@ config :steward_acs,
 
 config :steward_acs,
        :idle_after_ms,
-       System.get_env("IDLE_AFTER_MS", "900000") |> String.to_integer()
+       System.get_env("IDLE_AFTER_MS", "60000") |> String.to_integer()
 
 config :steward_acs,
        :idle_sleep_interval_ms,
@@ -136,7 +136,9 @@ if db_path in [nil, ""] and db_url not in [nil, ""] do
 
   repo_opts = [
     url: db_url,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE", "10"))
+    pool_size: String.to_integer(System.get_env("POOL_SIZE", "10")),
+    # Postgrex's 1s default ping keeps Neon active indefinitely.
+    idle_interval: String.to_integer(System.get_env("DB_IDLE_INTERVAL_MS", "86400000"))
   ]
 
   repo_opts =

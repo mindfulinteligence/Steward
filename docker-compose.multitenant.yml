@@ -26,6 +26,10 @@ x-steward-acs: &steward_acs
     DATABASE_URL: "${DATABASE_URL:?Set DATABASE_URL to Neon postgres connection string}"
     PGSSL: "${PGSSL:-true}"
     POOL_SIZE: "${POOL_SIZE:-10}"
+    # Sleep background DB workers quickly when no user-facing activity occurs.
+    IDLE_AFTER_MS: "${IDLE_AFTER_MS:-60000}"
+    IDLE_SLEEP_MS: "${IDLE_SLEEP_MS:-600000}"
+    DB_IDLE_INTERVAL_MS: "${DB_IDLE_INTERVAL_MS:-86400000}"
     ORGS_FILE: /data/orgs.yaml
     SECRET_KEY_BASE: "${SECRET_KEY_BASE:?Set SECRET_KEY_BASE}"
     MCP_API_KEY: "${MCP_API_KEY:?Set MCP_API_KEY}"
