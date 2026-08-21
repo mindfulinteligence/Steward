@@ -139,14 +139,20 @@ defmodule Acs.Application do
           end
         end
 
-        case Acs.Memory.Embedding.ensure_embeddings() do
-          {:ok, stats} ->
-            Logger.info(
-              "[Application] Embedding generation: #{stats.embedded} new, #{stats.existing} existing, #{stats.failed} failed out of #{stats.total}"
-            )
+        if Application.get_env(:steward_acs, :embedding_backfill_enabled, true) do
+          case Acs.Memory.Embedding.ensure_embeddings() do
+            {:ok, stats} ->
+              Logger.info(
+                "[Application] Embedding generation: #{stats.embedded} new, #{stats.existing} existing, #{stats.failed} failed out of #{stats.total}"
+              )
 
-          {:error, reason} ->
-            Logger.warning("[Application] Embedding generation skipped: #{reason}")
+            {:error, reason} ->
+              Logger.warning("[Application] Embedding generation skipped: #{reason}")
+          end
+        else
+          Logger.info(
+            "[Application] Embedding backfill disabled; use a supervised job to rebuild stale embeddings"
+          )
         end
       end)
 
