@@ -239,7 +239,8 @@ defmodule Acs do
 
   @doc false
   def touch_task_lease(agent_id) when is_binary(agent_id) do
-    with %{current_task_id: task_id} when is_binary(task_id) <- Acs.Acs.get_agent_status(agent_id),
+    with %{current_task_id: task_id} when is_binary(task_id) <-
+           Acs.Acs.get_agent_status(agent_id),
          %AcsTask{locked_by_agent: ^agent_id} = task <- resolve_task(task_id) do
       now = DateTime.utc_now()
 
