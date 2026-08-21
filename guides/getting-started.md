@@ -1,118 +1,131 @@
-# Steward: a shared operating system for AI agents
+# Set up Steward for your team
 
-Steward helps people coordinate AI agents that work on the same projects.
+Steward is shared memory and coordination for AI agents. Humans use the dashboard to manage the workspace; coding and chat agents connect through MCP to find knowledge, claim work, avoid file conflicts, and save what they learn.
 
-Without coordination, two agents can edit the same file, repeat the same investigation, or make decisions without telling the rest of the team. Steward gives them one shared place to declare work, avoid collisions, and preserve what they learn.
+You do not need to understand or modify Steward's source code to use it.
 
-Steward does **not** replace your coding agent, chat assistant, repository, or project tracker. It connects to agents through MCP and adds a coordination layer around the tools you already use.
+## Choose your setup
 
-## What Steward does
+### Join an existing hosted workspace
 
-| Need | Steward capability | Result |
-|---|---|---|
-| Know who is doing what | Tasks and agent presence | People and agents can see active work before starting something new. |
-| Prevent conflicting edits | File locks | Agents avoid changing the same file at the same time. |
-| Stop rediscovering decisions | Memories | Durable decisions, warnings, and patterns follow the team. |
-| Keep code intent understandable | Specs | Agents see a module's purpose and invariants before changing it. |
-| Reuse proven procedures | Skills | Installation, deployment, debugging, and support workflows become repeatable. |
-| Keep long-form knowledge available | Documents | Plans, policies, briefs, and reference material remain searchable. |
+1. Open the invitation link and sign in.
+2. Open your organization dashboard and expand **Agent URLs**.
+3. Click **Copy project setup prompt**.
+4. Open a coding agent at the root of your project and paste the prompt.
+5. Review the proposed MCP and instruction-file changes, then restart or reconnect the agent.
+6. Complete browser OAuth and ask the agent to call `get_started(audience: "coding")`.
 
-## Who it is for
+The copied prompt contains your exact organization URL and complete Steward instructions. It tells the agent to merge with existing configuration, not overwrite it.
 
-- A developer using more than one coding agent or editor.
-- A team whose agents work across the same repositories.
-- An organization that wants agent decisions and procedures to survive beyond one chat session.
-- Operators who need to see active work, review shared knowledge, and control access by organization and role.
+### Create a hosted workspace
 
-For one short, isolated agent task, Steward may be unnecessary. It becomes useful when work overlaps, repeats, or needs to be handed between people and agents.
+1. Go to [Steward](https://stewardacs.xyz/) and sign in.
+2. Create your organization and invite teammates from **Settings → Members**.
+3. Open **Agent URLs** and use the copy buttons for each agent you want to connect.
 
-## Set up Steward
+### Run Steward yourself
 
-Choose one of these paths:
+Follow the [self-hosted installation guide](/docs/install). It covers Docker, secrets, database choices, optional AI providers, startup, and verification.
 
-1. **Use a hosted organization:** create or join an organization from the Steward sign-in page. Your organization gets an isolated workspace and MCP endpoint.
-2. **Run Steward yourself:** follow the [installation guide](/docs/install). The default local setup uses Docker, SQLite, and no LLM provider.
+## URLs you will use
 
-After setup, open the Steward dashboard. It shows the MCP endpoint and copy-ready instructions for connecting chat and coding agents.
+Replace `<workspace-host>` with the hostname shown in **Agent URLs**. For example, the Anantha workspace host is `anantha.stewardacs.xyz`.
 
-## Connect a coding agent
+| Purpose | URL |
+|---|---|
+| Public website | `https://stewardacs.xyz/` |
+| Public documentation | `https://stewardacs.xyz/docs/overview` |
+| Workspace dashboard | `https://<workspace-host>/` |
+| Coding-agent MCP | `https://<workspace-host>/mcp/sse` |
+| Chat-agent MCP | `https://<workspace-host>/mcp/chat/sse` |
+| Prompts | `https://<workspace-host>/settings/prompts` |
+| Members and invitations | `https://<workspace-host>/settings/members` |
+| Shared documents and specs | `https://<workspace-host>/documents` |
+| Shared skills | `https://<workspace-host>/skills` |
 
-The exact settings screen differs by agent, but the flow is the same:
+Use `/mcp/sse` as the OAuth API identifier even when the chat connector URL is `/mcp/chat/sse`. Do not use the older `/mcp/coding/sse` alias in new configurations.
 
-For an invited user, the shortest path is to accept the invitation, open the organization workspace, expand **Agent URLs**, and choose **Copy project setup prompt**. Paste it into a coding agent opened at the project root. The agent merges the organization MCP URL and Steward instructions into the project's existing configuration, then tells the user how to reconnect and complete OAuth.
+## Connect a coding agent manually
 
-1. In the Steward dashboard, copy the **coding MCP endpoint** and coding-agent instructions.
-2. Add the endpoint as an MCP server in Codex, Cursor, Claude Code, OpenCode, or another MCP-compatible client.
-3. Complete the browser sign-in when using a hosted organization. A local installation uses its configured API key instead.
-4. Paste the coding-agent instructions into the repository's `AGENTS.md` or equivalent rules file.
-5. Restart or reconnect the agent so it discovers the Steward tools.
-6. Ask the agent to check Steward. A successful connection returns its identity, repository context, and current work guidance.
+The dashboard-generated setup prompt is the safest option because it includes the correct workspace URL and current instructions. If you must configure a client manually, add a server named `steward`.
 
-Example remote configuration:
+Codex (`.codex/config.toml`):
 
 ```toml
 [mcp_servers.steward]
-url = "https://YOUR-STEWARD-HOST/mcp/sse"
+url = "https://<workspace-host>/mcp/sse"
 ```
 
-Keep the generated repository instructions in version control when they contain no secrets. Keep API keys and local environment files out of version control.
+Cursor (`.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "steward": {
+      "type": "http",
+      "url": "https://<workspace-host>/mcp/sse"
+    }
+  }
+}
+```
+
+Hosted connections use browser OAuth, so do not add an API key header. A private local installation uses the API key generated during installation.
+
+Next, copy the coding instructions from **Agent URLs** into `AGENTS_STEWARD.md` at the repository root. Ensure the root `AGENTS.md` includes:
+
+```md
+Check if `@AGENTS_STEWARD.md` exists. If yes, follow the instructions there.
+```
+
+Keep existing project instructions. Do not replace `AGENTS.md` or an existing MCP configuration wholesale.
 
 ## Connect a chat agent
 
-Use the dashboard's **chat MCP endpoint** and chat instructions when connecting a conversational assistant such as Claude or ChatGPT.
+1. In **Agent URLs**, copy `https://<workspace-host>/mcp/chat/sse`.
+2. Add it as a custom MCP connector in the chat product.
+3. Complete browser OAuth.
+4. Copy the chat system prompt from **Agent URLs** into that agent's system instructions.
+5. Ask the agent to find a known document or skill to verify access.
 
-Chat agents get a smaller, safer tool surface for finding knowledge, reading skills and documents, checking work status, and saving approved information. Coding agents additionally receive task and file-locking tools because they modify repositories.
+Chat agents receive a smaller tool set for reading shared knowledge and saving approved information. Coding agents receive task and file-lock tools because they change repositories.
 
-## The normal agent workflow
+## What the agent instructions must enforce
 
-Once connected, agents should follow this loop:
+Use the dashboard's copy-ready prompt as the source of truth. At minimum, every coding agent must:
 
-1. **Check context:** identify the repository and load relevant memories, specs, and skills.
-2. **Claim work:** create or claim a task before making changes.
-3. **Lock files:** reserve the files that will be edited.
-4. **Do and verify the work:** change the project and run the smallest meaningful checks.
-5. **Save reusable knowledge:** update a spec, skill, document, or memory when the work produced something future agents need.
-6. **Release and report:** release the task and submit feedback so the next person or agent sees a clean state.
+1. Call `get_started` when entering Steward work.
+2. Create or claim a task before doing work.
+3. Confirm the repository and lock each file before editing it.
+4. Read relevant skills and specs before changing their scope.
+5. Run a meaningful verification check.
+6. Save durable output in the correct store: memory, spec, document, or skill.
+7. Release work and submit task feedback before declaring completion.
 
-The human remains responsible for priorities, approvals, and decisions that change scope. Steward makes the agent's work visible; it does not grant agents authority they did not already have.
+Humans still decide priorities, approve scope changes, review sensitive information, and control deployment. Connecting Steward does not grant an agent authority it did not already have.
 
-## How this helps a team
+## Verify the setup
 
-### Fewer collisions
+Ask a coding agent:
 
-Before editing, an agent can see that another agent already owns a task or file. The team spends less time resolving duplicate work and conflicting patches.
+> Connect to Steward, call `get_started` for a coding audience, and tell me the connected organization and your assigned agent ID. Do not change any files.
 
-### Better handoffs
+A working connection returns the signed-in identity, repository guidance, and Steward tools. Then ask it to create and release a small test task if you want to verify write access.
 
-A task records the current unit of work. Specs explain why code exists. Memories preserve decisions and warnings. A different person or agent can continue without reconstructing the full history from chat transcripts.
+For a chat agent, ask it to search for a known workspace document. It should identify the organization and return only information allowed by your access level.
 
-### Consistent procedures
+## Troubleshooting
 
-When a deployment, installation, or support workflow works, save it as a skill. Future agents retrieve the same verified steps instead of improvising a new procedure.
-
-### Shared knowledge with boundaries
-
-Organizations, teams, projects, roles, and authority levels control who can see or change shared information. Local ACS instances remain test-only; team knowledge belongs in the shared Steward organization.
-
-### Human oversight
-
-The dashboard shows active agents, tasks, memories, documents, skills, tool requests, and errors. Humans can review the operating context instead of relying on each agent to summarize itself accurately.
-
-## A practical team rollout
-
-1. Start with one repository and two or three people.
-2. Add the Steward MCP connection and repository instructions to every agent used on that repository.
-3. Require task claiming and file locking for all code changes.
-4. Save only durable knowledge: decisions, invariants, warnings, and repeatable procedures.
-5. Review memories, specs, and skills regularly; archive or correct anything stale.
-6. Expand to more repositories after the workflow feels routine.
-
-The goal is not to store every conversation. The goal is to keep the small amount of context that prevents the team from repeating mistakes.
+- **No Steward tools appear:** restart or reconnect the client after adding the MCP server.
+- **A browser did not open:** remove the stale connection and add it again to restart OAuth.
+- **401 or expired login:** reconnect and complete OAuth again.
+- **Service not found:** confirm the URL is your organization host and ends in `/mcp/sse` or `/mcp/chat/sse`.
+- **Duplicate tools:** both a local and hosted Steward server are enabled; disable the one you are not using.
+- **The agent wants to overwrite project files:** stop and tell it to merge the Steward entries into the existing files.
+- **Wrong organization or missing knowledge:** verify the workspace hostname and the account used during OAuth.
 
 ## Next steps
 
-- [Install Steward](/docs/install)
-- [Review configuration and secrets](/docs/configuration)
-- [Understand remote versus local development](/docs/development)
-- [Deploy Steward](/docs/deployment)
+- [Install a private instance](/docs/install)
+- [Configure secrets and providers](/docs/configuration)
+- [Operate a deployment](/docs/deployment)
 - [Read the technical reference](/docs/technical)

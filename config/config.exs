@@ -26,6 +26,10 @@ config :steward_acs,
   ecto_repos: [Acs.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Keep this aligned with OpentelemetryEcto.setup/1 in Acs.Application so
+# database query, queue, decode, and error spans reach the trace exporter.
+config :steward_acs, Acs.Repo, telemetry_prefix: [:steward_acs, :repo]
+
 config :steward_acs, AcsWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
