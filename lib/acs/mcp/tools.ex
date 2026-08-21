@@ -1288,7 +1288,7 @@ defmodule Acs.MCP.Tools do
   def call_tool(name, args) do
     # Chat OAuth: agents often pass agent_id "" (coding get_started habit). Blank means
     # "use authenticated identity" — don't require a separate agent name.
-    args = coerce_blank_agent_id(args)
+    args = args |> coerce_agent_id() |> bind_working_context(name)
 
     with :ok <- validate_agent_identity(args) do
       Acs.IdleTracker.touch()
@@ -1304,6 +1304,8 @@ defmodule Acs.MCP.Tools do
           _ ->
             Acs.Acs.Cache.touch_agent_status(agent_id)
         end
+
+        Acs.touch_task_lease(agent_id)
       end
 
       result =
@@ -1329,17 +1331,16 @@ defmodule Acs.MCP.Tools do
     end
   end
 
-  defp coerce_blank_agent_id(args) when is_map(args) do
+  defp coerce_agent_id(args) when is_map(args) do
     requested = Map.get(args, "agent_id")
     auth_identity = Map.get(args, "_auth_agent_id")
-    chat? = Acs.MCP.Audience.normalize(Map.get(args, "_auth_audience")) == :chat
 
     cond do
       blank_agent_id?(requested) and usable_auth_agent_id?(auth_identity) ->
         Map.put(args, "agent_id", auth_identity)
 
-      # ponytail: chat models invent nicknames (nahar-chat); OAuth identity is authoritative.
-      chat? and usable_auth_agent_id?(auth_identity) and is_binary(requested) and
+      # The authenticated session owns identity; caller text cannot rename it.
+      usable_auth_agent_id?(auth_identity) and is_binary(requested) and
         not blank_agent_id?(requested) and
           normalize_agent_id(requested) != normalize_agent_id(auth_identity) ->
         Map.put(args, "agent_id", auth_identity)
@@ -1351,6 +1352,21 @@ defmodule Acs.MCP.Tools do
         args
     end
   end
+
+  @contextual_tools ~w(ask steward_ask query_memories query_specs skill_get generate_guidance_packet)
+
+  defp bind_working_context(args, name) when name in @contextual_tools do
+    identity = args["_auth_agent_id"] || args["agent_id"]
+
+    args
+    |> put_default("_auth_repo", Acs.MCP.ClientSession.resolve_working_repo(identity))
+    |> put_default("scope_path", Acs.MCP.ClientSession.resolve_working_scope(identity))
+  end
+
+  defp bind_working_context(args, _name), do: args
+
+  defp put_default(args, _key, value) when value in [nil, ""], do: args
+  defp put_default(args, key, value), do: Map.put_new(args, key, value)
 
   defp blank_agent_id?(nil), do: true
 

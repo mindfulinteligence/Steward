@@ -33,6 +33,9 @@ defmodule AcsWeb.AcsLive.IndexTest do
     assert html =~ "Copy Always Active"
     assert html =~ "Copy Opt In"
     assert html =~ "Copy this into your AGENTS.md"
+    assert html =~ "Copy project setup prompt"
+    assert html =~ "https://prod.stewardacs.xyz/mcp/sse"
+    assert html =~ ~s(id="copy-project-setup-prompt")
     assert html =~ ~s(id="copy-chat-always-system-prompt")
     assert html =~ ~s(id="copy-chat-opt-in-system-prompt")
     assert html =~ ~s(id="copy-coding-coding-system-prompt")
@@ -93,7 +96,8 @@ defmodule AcsWeb.AcsLive.IndexTest do
           mcp_endpoints: AcsWeb.McpUrls.endpoints(),
           chat_system_prompt: AcsWeb.McpUrls.chat_system_prompt(:always),
           chat_system_prompt_opt_in: AcsWeb.McpUrls.chat_system_prompt(:opt_in),
-          coding_system_prompt: AcsWeb.McpUrls.coding_system_prompt()
+          coding_system_prompt: AcsWeb.McpUrls.coding_system_prompt(),
+          project_setup_prompt: AcsWeb.McpUrls.project_setup_prompt()
         },
         Map.new(overrides)
       )

@@ -25,6 +25,7 @@ if repo_adapter == Ecto.Adapters.Postgres do
     port: String.to_integer(System.get_env("PGPORT", "5432")),
     database: System.get_env("PGDATABASE", "acs_prod"),
     pool_size: String.to_integer(System.get_env("POOL_SIZE", "10")),
+    idle_interval: String.to_integer(System.get_env("DB_IDLE_INTERVAL_MS", "86400000")),
     ssl: System.get_env("PGSSL", "false") == "true"
 end
 

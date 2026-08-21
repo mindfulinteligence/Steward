@@ -39,6 +39,8 @@ After setup, open the Steward dashboard. It shows the MCP endpoint and copy-read
 
 The exact settings screen differs by agent, but the flow is the same:
 
+For an invited user, the shortest path is to accept the invitation, open the organization workspace, expand **Agent URLs**, and choose **Copy project setup prompt**. Paste it into a coding agent opened at the project root. The agent merges the organization MCP URL and Steward instructions into the project's existing configuration, then tells the user how to reconnect and complete OAuth.
+
 1. In the Steward dashboard, copy the **coding MCP endpoint** and coding-agent instructions.
 2. Add the endpoint as an MCP server in Codex, Cursor, Claude Code, OpenCode, or another MCP-compatible client.
 3. Complete the browser sign-in when using a hosted organization. A local installation uses its configured API key instead.

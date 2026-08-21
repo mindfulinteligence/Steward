@@ -312,6 +312,17 @@ defmodule Acs.MCP.ClientSession do
   def resolve_workspace_id(agent_identity \\ nil),
     do: resolve_session_field(agent_identity, :workspace_id)
 
+  @doc "Bind the most recent confirmed work scope for contextual retrieval."
+  def set_working_scope(scope_path, agent_identity \\ nil) do
+    attrs = %{working_scope: scope_path}
+    merge_put(current_id(), attrs)
+    merge_put(agent_key(agent_identity), attrs)
+    :ok
+  end
+
+  def resolve_working_scope(agent_identity \\ nil),
+    do: resolve_session_field(agent_identity, :working_scope)
+
   def remember_initialize(params, agent_identity) when is_map(params) do
     client_info = params["clientInfo"] || params[:clientInfo] || %{}
     client_name = client_info["name"] || client_info[:name]

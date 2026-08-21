@@ -129,7 +129,7 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
          :ok <- Acs.Memory.validate(memory_map) do
       memory = Acs.Memory.new(memory_map)
 
-      case do_save_with_validation(memory, memory_map, embed_task,
+      case do_save_with_validation(memory, memory_map, embed_task, ctx,
              actor: %{type: creator_type, id: creator_id},
              source: "mcp",
              message: "Create memory #{memory.id}"
@@ -746,9 +746,8 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
       nil ->
         :ok
 
-      %{title: existing_title} ->
-        {:error,
-         "A memory with the same ID already exists: '#{existing_title}'. Use a different title or kind to avoid duplication."}
+      existing ->
+        {:duplicate, existing, "A memory with the same ID already exists."}
     end
   end
 
@@ -785,8 +784,8 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
             check_lexical_memory_duplicate(memory.title, memory.scope_path)
 
           most_similar.similarity >= 0.97 ->
-            {:error,
-             "A very similar memory already exists (cosine similarity: #{Float.round(most_similar.similarity, 4)}): '#{other_title}'. Please review existing memories before creating a new one."}
+            {:duplicate, other,
+             "A very similar memory already exists (cosine similarity: #{Float.round(most_similar.similarity, 4)}): '#{other_title}'."}
 
           true ->
             {:soft_block,
@@ -810,7 +809,12 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
   defp check_lexical_memory_duplicate(title, scope_path) do
     title_lower = String.downcase(title)
 
-    existing = Acs.Memory.Indexer.list_memories(scope_path: scope_path, org: Acs.Org.current())
+    existing =
+      Acs.Memory.Indexer.list_memories(
+        scope_path: scope_path,
+        org: Acs.Org.current(),
+        system: true
+      )
 
     case Enum.find(existing, fn m ->
            m.scope_path == scope_path && String.downcase(m.title) == title_lower
@@ -819,8 +823,8 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
         :ok
 
       match ->
-        {:error,
-         "A memory with the title '#{match.title}' already exists at scope '#{scope_path}'. Duplicate titles at the same scope are not allowed."}
+        {:duplicate, match,
+         "A memory with the title '#{match.title}' already exists at scope '#{scope_path}'."}
     end
   end
 
@@ -945,33 +949,75 @@ defmodule Acs.MCP.Tools.MemoryHandlers do
     {:ok, result}
   end
 
-  defp do_save_with_validation(memory, memory_map, embed_task, store_opts) do
-    with :ok <- check_exact_memory_duplicate(memory.id),
-         {:ok, embedding_result} <- await_embedding(embed_task),
-         semantic_result <- check_semantic_memory_duplicate(memory, embedding_result) do
-      case semantic_result do
-        {:error, reason} ->
-          {:error, reason}
+  defp do_save_with_validation(memory, memory_map, embed_task, ctx, store_opts) do
+    case check_exact_memory_duplicate(memory.id) do
+      {:duplicate, existing, reason} ->
+        shutdown_embed_task(embed_task)
+        duplicate_response(existing, reason, ctx)
 
-        {:soft_block, message, existing_id} ->
-          memory = %{memory | status: "proposed"}
+      :ok ->
+        with {:ok, embedding_result} <- await_embedding(embed_task) do
+          case check_semantic_memory_duplicate(memory, embedding_result) do
+            {:duplicate, existing, reason} ->
+              duplicate_response(existing, reason, ctx)
 
-          soft_flag = %{
-            type: "possible_duplicate",
-            existing_memory_id: existing_id,
-            reason: message,
-            confidence: :medium
-          }
+            {:soft_block, message, existing_id} ->
+              memory = %{memory | status: "proposed"}
 
-          save_with_flags(memory, memory_map, store_opts, [soft_flag], embedding_result, message)
+              soft_flag = %{
+                type: "possible_duplicate",
+                existing_memory_id: existing_id,
+                reason: message,
+                confidence: :medium
+              }
 
-        :ok ->
-          save_with_flags(memory, memory_map, store_opts, [], embedding_result, nil)
-      end
-    else
-      {:error, reason} -> {:error, reason}
+              save_with_flags(
+                memory,
+                memory_map,
+                store_opts,
+                [soft_flag],
+                embedding_result,
+                message
+              )
+
+            :ok ->
+              save_with_flags(memory, memory_map, store_opts, [], embedding_result, nil)
+          end
+        end
     end
   end
+
+  defp duplicate_response(existing, reason, ctx) do
+    readable? = Acs.Abac.visible?(ctx, existing)
+
+    {:ok,
+     %{
+       status: "duplicate",
+       duplicate: duplicate_fields(existing, readable?),
+       update_available: readable? and Acs.Abac.can_edit?(ctx, existing),
+       message: duplicate_message(reason, readable?)
+     }}
+  end
+
+  defp duplicate_fields(existing, true) do
+    %{
+      id: existing.id,
+      kind: existing.kind,
+      title: existing.title,
+      summary: existing.summary,
+      content: existing.content,
+      scope_path: existing.scope_path,
+      importance: existing.importance
+    }
+  end
+
+  defp duplicate_fields(existing, false), do: %{id: existing.id}
+
+  defp duplicate_message(reason, true),
+    do: "#{reason} Ask the user whether to update it with update_memory."
+
+  defp duplicate_message(_reason, false),
+    do: "A duplicate memory exists but is not readable at the caller's clearance."
 
   defp save_with_flags(memory, memory_map, store_opts, extra_flags, embedding_result, message) do
     case Acs.Memory.Conflict.check_before_save(memory_map) do

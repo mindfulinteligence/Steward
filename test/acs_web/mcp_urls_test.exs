@@ -59,4 +59,17 @@ defmodule AcsWeb.McpUrlsTest do
     assert prompt =~ "get_present_status"
     assert prompt =~ "create_work"
   end
+
+  test "project setup prompt carries the organization URL and safe merge workflow" do
+    prompt = McpUrls.project_setup_prompt(URI.parse("https://acme.stewardacs.xyz/welcome"))
+
+    assert prompt =~ "Organization URL: https://acme.stewardacs.xyz"
+    assert prompt =~ "Coding MCP URL: https://acme.stewardacs.xyz/mcp/sse"
+    assert prompt =~ "Preserve all existing instructions and MCP servers"
+    assert prompt =~ "Create or update `AGENTS_STEWARD.md`"
+    assert prompt =~ "Ensure the root `AGENTS.md` contains"
+    assert prompt =~ "get_started(audience: \"coding\")"
+    assert prompt =~ "Steward ACS — Agent Instructions"
+    refute prompt =~ "x-api-key"
+  end
 end

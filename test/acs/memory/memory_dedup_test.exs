@@ -15,18 +15,26 @@ defmodule Acs.MemoryDedupTest do
       "This is a test memory for deduplication verification. It has enough content to generate a meaningful embedding.",
     "scope_path" => "test/dedup",
     "tags" => ["test", "dedup", "verification"],
-    "importance" => 3
+    "importance" => 3,
+    "_auth_role" => "admin",
+    "_auth_authority_sort_order" => 1
   }
 
   describe "Layer 1: Exact ID duplicate" do
-    test "rejects memory with same kind and title (same ID)" do
+    test "returns an exact duplicate and asks whether to update it" do
       assert {:ok, %{id: id1, status: "proposed"}} =
                Acs.MCP.Tools.call_tool("save_memory", @base_attrs)
 
-      assert {:error, message} =
+      assert {:ok,
+              %{
+                status: "duplicate",
+                duplicate: %{id: ^id1, title: "Dedup Test Memory"},
+                update_available: true,
+                message: message
+              }} =
                Acs.MCP.Tools.call_tool("save_memory", @base_attrs)
 
-      assert message =~ "same ID already exists"
+      assert message =~ "Ask the user whether to update it"
 
       cleanup_memory(id1, "test/dedup")
     end
@@ -45,7 +53,7 @@ defmodule Acs.MemoryDedupTest do
 
       assert elem(result, 0) in [:ok, :error]
 
-      if elem(result, 0) == :ok do
+      if elem(result, 0) == :ok and elem(result, 1)[:id] do
         cleanup_memory(elem(result, 1)[:id], "test/dedup")
       end
 
@@ -65,12 +73,13 @@ defmodule Acs.MemoryDedupTest do
           "content" => "Slightly different content but same scope and downcased title",
           "scope_path" => "test/dedup",
           "tags" => ["test", "dedup"],
-          "importance" => 4
+          "importance" => 4,
+          "_auth_role" => "admin",
+          "_auth_authority_sort_order" => 1
         })
 
       # Layer 3 should detect duplicate title at same scope regardless of Ollama
-      assert {:error, message} = result
-      assert message =~ "already exists"
+      assert {:ok, %{status: "duplicate", duplicate: %{title: "Dedup Test Memory"}}} = result
 
       cleanup_memory(id1, "test/dedup")
     end

@@ -81,6 +81,34 @@ defmodule AcsWeb.McpUrls do
     |> Enum.find_value("", &read_prompt/1)
   end
 
+  @doc "One paste that lets a coding agent configure the current project for this organization."
+  @spec project_setup_prompt(URI.t() | nil) :: String.t()
+  def project_setup_prompt(uri \\ nil) do
+    organization_url = base_url(uri)
+    mcp_url = organization_url <> "/mcp/sse"
+
+    """
+    Set up Steward for the project in your current working directory.
+
+    Organization URL: #{organization_url}
+    Coding MCP URL: #{mcp_url}
+    MCP server name: steward
+
+    Do the setup now:
+    1. Inspect the repository and its existing agent/MCP files. Preserve all existing instructions and MCP servers.
+    2. Configure a project-local MCP server named `steward` at `#{mcp_url}` using this coding client's native format. Use URL/OAuth only—do not add API keys or headers. If only a user-level MCP configuration is supported, explain that before changing files outside this project.
+    3. Create or update `AGENTS_STEWARD.md` from the instruction block below. Replace `Repo: steward_acs` with `Repo: <this repository's name>` after verifying the repository root with `git rev-parse --show-toplevel`.
+    4. Ensure the root `AGENTS.md` contains: `Check if @AGENTS_STEWARD.md exists. If yes, follow the instructions there.` Do not replace unrelated project instructions.
+    5. Validate every configuration file you changed. Do not commit secrets. The organization URL and agent instructions are safe to commit.
+    6. Tell me which files changed and the exact restart/reconnect step. After I complete browser OAuth and reconnect, call `get_started(audience: "coding")` to verify the organization and tools.
+
+    --- BEGIN AGENTS_STEWARD.md ---
+    #{coding_system_prompt()}
+    --- END AGENTS_STEWARD.md ---
+    """
+    |> String.trim()
+  end
+
   defp read_prompt(path) when is_binary(path) do
     case File.read(path) do
       {:ok, content} ->

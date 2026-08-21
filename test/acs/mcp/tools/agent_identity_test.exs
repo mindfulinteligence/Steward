@@ -12,8 +12,8 @@ defmodule Acs.MCP.Tools.AgentIdentityTest do
              })
   end
 
-  test "mismatched agent_id still rejected when auth identity present for coding" do
-    assert {:error, reason} =
+  test "coding calls use the authenticated identity instead of caller-supplied identity" do
+    assert {:ok, result} =
              Tools.call_tool("get_present_status", %{
                "agent_id" => "Eve",
                "_auth_agent_id" => "email|oauth-user",
@@ -21,7 +21,8 @@ defmodule Acs.MCP.Tools.AgentIdentityTest do
                "_auth_audience" => "coding"
              })
 
-    assert reason =~ "does not match authenticated identity"
+    assert Map.get(result, :agent_id) == "email|oauth-user" or
+             Map.get(result, :assigned_agent_id) == "email|oauth-user"
   end
 
   test "chat audience coerces invented agent_id to OAuth identity" do

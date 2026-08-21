@@ -53,8 +53,14 @@ defmodule Acs do
           })
 
         task_attrs =
-          if task_attrs["status"] == "claimed" do
-            Map.put(task_attrs, "locked_by_agent", agent_id)
+          if task_attrs["status"] in ["claimed", "in_progress"] do
+            now = DateTime.utc_now()
+
+            Map.merge(task_attrs, %{
+              "locked_by_agent" => agent_id,
+              "locked_at" => now,
+              "auto_release_at" => DateTime.add(now, 10, :minute)
+            })
           else
             task_attrs
           end
@@ -65,6 +71,10 @@ defmodule Acs do
                %AcsTask{} |> AcsTask.changeset(task_attrs) |> Repo.insert()
              end) do
           {:ok, task} = result ->
+            if task.locked_by_agent do
+              upsert_agent_status(agent_id, task.id, "Working on task", nil, nil)
+            end
+
             Cache.put_task(task.id, to_task_map(task))
             broadcast(:task_created, %{task_id: task.id, title: task.title})
             if Enum.any?(similar), do: {:warn, task, similar}, else: result
@@ -186,21 +196,12 @@ defmodule Acs do
             %{locked_by_agent: locked_by} when not is_nil(locked_by) and locked_by != agent_id ->
               Repo.rollback({:error, :not_owner})
 
-            %{locked_by_agent: nil} ->
-              nil
+            %AcsTask{locked_by_agent: nil, created_by_agent: ^agent_id, status: status} = task
+            when status != "done" ->
+              complete_task(task)
 
             %AcsTask{} = task ->
-              {:ok, updated} =
-                task
-                |> AcsTask.changeset(%{
-                  "locked_by_agent" => nil,
-                  "locked_at" => nil,
-                  "auto_release_at" => nil,
-                  "status" => "done"
-                })
-                |> Repo.update()
-
-              updated
+              complete_task(task)
           end
         end)
       end)
@@ -220,6 +221,41 @@ defmodule Acs do
       {:error, {:error, reason}} ->
         {:error, reason}
     end
+  end
+
+  defp complete_task(task) do
+    {:ok, updated} =
+      task
+      |> AcsTask.changeset(%{
+        "locked_by_agent" => nil,
+        "locked_at" => nil,
+        "auto_release_at" => nil,
+        "status" => "done"
+      })
+      |> Repo.update()
+
+    updated
+  end
+
+  @doc false
+  def touch_task_lease(agent_id) when is_binary(agent_id) do
+    with %{current_task_id: task_id} when is_binary(task_id) <-
+           Acs.Acs.get_agent_status(agent_id),
+         %AcsTask{locked_by_agent: ^agent_id} = task <- resolve_task(task_id) do
+      now = DateTime.utc_now()
+
+      case task
+           |> AcsTask.changeset(%{
+             "locked_at" => now,
+             "auto_release_at" => DateTime.add(now, 10, :minute)
+           })
+           |> Repo.update() do
+        {:ok, updated} -> Cache.put_task(updated.id, to_task_map(updated))
+        _ -> :ok
+      end
+    end
+
+    :ok
   end
 
   @doc """
