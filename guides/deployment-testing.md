@@ -95,6 +95,8 @@ Pick the smallest layer that can catch the bug. Update docs/skill in the same ch
 5. **No smoke script edit required** — deploy smoke evals live `chat_surface/0` from the running container and compares to `/mcp/chat/sse` `tools/list`. Shipping a mismatched image fails smoke automatically when `SMOKE_API_KEY` is set.
 6. Coding-only tools: ensure `/mcp/coding/sse` still returns **more** tools than chat (smoke asserts divergence).
 
+For stale PostgreSQL recovery changes, leave database connections idle beyond the provider's close window, then verify the first tenant MCP request succeeds after one pool reset. Confirm no background ping was added and no write is retried.
+
 ### B. New HTTP route / health invariant
 
 - Prefer ExUnit + ConnCase / LiveView tests in CI.
