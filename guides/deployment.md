@@ -93,6 +93,8 @@ The idle-slot health wait defaults to 300 seconds (`HEALTH_WAIT_SECONDS`); if it
 
 Prod uses one Postgres database on Neon (`DATABASE_URL` in Infisical `prod`). Prefer Neon's **pooled** connection string. Set `PGSSL=true` in thin `.env` (default in compose). Never commit the URL.
 
+ACS does not ping PostgreSQL while idle, so Neon can suspend. If an idle SSL socket was closed remotely, tenant resolution discards the stale connection pool and retries its read-only lookup once. Writes are not replayed.
+
 Release entrypoint runs migrations on boot. Manual recovery:
 
 ```bash
