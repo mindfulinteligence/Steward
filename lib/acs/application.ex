@@ -74,10 +74,9 @@ defmodule Acs.Application do
           Acs.MCP.SSESessionManager,
           Acs.MCP.LogStore,
           Acs.MCP.ErrorTrace,
-          Acs.LogAnalyzer,
           # Acs.MCP.Server removed — endpoint handles MCP routing (start_http/1 available for standalone)
           AcsWeb.Endpoint
-        ]
+        ] ++ log_analyzer_children()
 
     background_workers? = Application.get_env(:steward_acs, :start_background_workers, true)
     multi_tenant? = Acs.Org.multi_tenant?()
@@ -196,6 +195,13 @@ defmodule Acs.Application do
     attach_mount_telemetry()
 
     {:ok, pid}
+  end
+
+  @doc false
+  def log_analyzer_children do
+    if Application.get_env(:steward_acs, :log_analyzer_enabled, true),
+      do: [Acs.LogAnalyzer],
+      else: []
   end
 
   defp attach_mount_telemetry do
