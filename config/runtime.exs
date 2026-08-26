@@ -166,7 +166,7 @@ if db_path in [nil, ""] and db_url not in [nil, ""] do
             [verify: :verify_none]
         end
 
-      Keyword.merge(repo_opts, ssl: true, ssl_opts: ssl_opts)
+      Keyword.put(repo_opts, :ssl, ssl_opts)
     else
       repo_opts
     end

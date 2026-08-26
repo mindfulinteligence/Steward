@@ -92,13 +92,21 @@ defmodule AcsWeb.Plugs.ResolveOrg do
   def retry_org_lookup(lookup, disconnect \\ &Acs.Repo.disconnect_all/1) do
     lookup.()
   rescue
-    error in DBConnection.ConnectionError ->
-      Logger.warning("resetting stale database pool before retrying tenant lookup",
-        error: Exception.message(error)
-      )
+    DBConnection.ConnectionError ->
+      # ponytail: one lock per node; each node owns an independent database pool.
+      :global.trans({__MODULE__, :stale_pool_recovery}, fn ->
+        try do
+          lookup.()
+        rescue
+          error in DBConnection.ConnectionError ->
+            Logger.warning("resetting stale database pool before retrying tenant lookup",
+              error: Exception.message(error)
+            )
 
-      :ok = disconnect.(0)
-      lookup.()
+            :ok = disconnect.(0)
+            lookup.()
+        end
+      end)
   end
 
   # Scanner noise (www/m/portal/…) is expected — 404 is enough. Keep WARN for
