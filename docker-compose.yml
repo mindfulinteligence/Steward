@@ -51,10 +51,10 @@ services:
       # LLM provider API keys (enable memory auditing and semantic search)
       # At least one provider key is needed for memory features to work:
       NIM_API_KEY: "${NIM_API_KEY:-}"
-       TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
+      TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
       MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-       TOKENROUTER_MODEL: "${TOKENROUTER_MODEL:-z-ai/glm-5.3-free}"
+      TOKENROUTER_MODEL: "${TOKENROUTER_MODEL:-z-ai/glm-5.3-free}"
 
       # Per-location, per-call-type LLM routing (see Acs.LLM.Router).
       ACS_REGION: "${ACS_REGION:-default}"
