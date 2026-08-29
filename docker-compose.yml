@@ -18,7 +18,7 @@ services:
       # Local is always SQLite — never inherit Neon DATABASE_URL from a host .env
       DATABASE_PATH: /app/priv/acs.sqlite
       DATABASE_URL: ""
-      ENABLED_LLM_PROVIDERS: "${ENABLED_LLM_PROVIDERS:-mimo}"
+      ENABLED_LLM_PROVIDERS: "${ENABLED_LLM_PROVIDERS:-tokenrouter}"
       MCP_AUTH_LOCAL_FALLBACK: "false"
       META_HARNESS_ENABLED: "true"
 
@@ -51,14 +51,10 @@ services:
       # LLM provider API keys (enable memory auditing and semantic search)
       # At least one provider key is needed for memory features to work:
       NIM_API_KEY: "${NIM_API_KEY:-}"
-      MIMO_API_KEY: "${MIMO_API_KEY:-}"
+       TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
       MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-      OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
-      OPENAI_MODEL: "${OPENAI_MODEL:-}"
-      OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
-      OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-}"
-      OPENROUTER_MODEL: "${OPENROUTER_MODEL:-}"
+       TOKENROUTER_MODEL: "${TOKENROUTER_MODEL:-z-ai/glm-5.3-free}"
 
       # Per-location, per-call-type LLM routing (see Acs.LLM.Router).
       ACS_REGION: "${ACS_REGION:-default}"

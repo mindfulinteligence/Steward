@@ -9,7 +9,7 @@ defmodule Acs.LLM.Router do
     2. `LLM_PRIORITY_<CALLTYPE>`            (env, any region)
     3. `LLM_PRIORITY_<REGION>`              (env, any call type)
     4. code fallback map (region -> call types)
-    5. default `["mimo","nim","minimax","openai"]`
+    5. default `["tokenrouter","nim","minimax","openai"]`
 
   Model override precedence (highest-first):
 
@@ -23,11 +23,11 @@ defmodule Acs.LLM.Router do
   from the `ACS_REGION` env var, default `"default"`).
   """
 
-  @default_priority ["mimo", "nim", "minimax", "openai"]
+  @default_priority ["tokenrouter", "nim", "minimax", "openai"]
 
   @fallback_priorities %{
     "default" => %{"default" => @default_priority},
-    "sg" => %{"default" => ["mimo", "openai"], "intake" => ["openai"]},
+    "sg" => %{"default" => ["tokenrouter", "openai"], "intake" => ["openai"]},
     "us" => %{"default" => ["openai"], "intake" => ["openai"]}
   }
 

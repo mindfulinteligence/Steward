@@ -63,7 +63,7 @@ defmodule Acs.MCP.Tools.AppExtension.Default do
     %{
       minimax_key: api_key(:minimax),
       nim_key: api_key(:nim),
-      mimo_key: api_key(:mimo),
+      tokenrouter_key: api_key(:tokenrouter),
       openai_key: api_key(:openai)
     }
   end

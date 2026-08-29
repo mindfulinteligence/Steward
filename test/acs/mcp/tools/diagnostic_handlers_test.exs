@@ -132,7 +132,7 @@ defmodule Acs.MCP.Tools.DiagnosticHandlersTest do
       assert is_map(config)
       assert Map.has_key?(config, :minimax_key)
       assert Map.has_key?(config, :nim_key)
-      assert Map.has_key?(config, :mimo_key)
+      assert Map.has_key?(config, :tokenrouter_key)
       assert Map.has_key?(config, :openai_key)
     end
 

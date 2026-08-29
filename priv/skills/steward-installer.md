@@ -50,7 +50,7 @@ ACS uses an LLM for memory quality auditing. Options:
 - **None** — memories auto-approve, no API key needed
 - **NVIDIA NIM** — fast, free tier available. Needs `NIM_API_KEY`
 - **MiniMax** — low cost. Needs `MINIMAX_API_KEY`
-- **MIMO** — fast, competitive. Needs `MIMO_API_KEY`
+- **TokenRouter** — OpenAI-compatible routing with GLM-5.3. Needs `TOKENROUTER_API_KEY`
 - **OpenAI** — best quality. Needs `OPENAI_API_KEY`
 - **OpenAI-compatible** — self-hosted. Needs base URL, model name
 

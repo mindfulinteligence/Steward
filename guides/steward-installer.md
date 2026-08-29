@@ -86,7 +86,7 @@ Your local dashboard is `http://localhost:4001/`. The local MCP endpoint is `htt
 
 Configure these only when you need them:
 
-- An LLM provider for memory-quality review: NVIDIA NIM, MiniMax, MIMO, OpenAI, or an OpenAI-compatible endpoint
+- An LLM provider for memory-quality review: TokenRouter, NVIDIA NIM, MiniMax, OpenAI, or an OpenAI-compatible endpoint
 - Ollama with `nomic-embed-text` for semantic search
 - PostgreSQL for concurrent multi-user operation
 - Fluent Bit or direct HTTP ingestion for application logs
