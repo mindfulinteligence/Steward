@@ -156,6 +156,8 @@ The file watcher debounces events (1000ms) and excludes `.obsidian/` internal fi
 | `OBSIDIAN_VAULT_PATH` | No | — | Filesystem path to Obsidian vault |
 | `ENABLED_LLM_PROVIDERS` | No | all | Comma-separated whitelist (e.g. `tokenrouter,nim`) |
 | `NIM_API_KEY` | No | — | NVIDIA NIM API key for LLM evaluation |
+| `NIM_MODEL` | No | `meta/llama-3.3-70b-instruct` | NIM model override (e.g. `nvidia/nemotron-3.5-lightning-30b-a3b`) |
+| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NIM API base URL override |
 | `TOKENROUTER_API_KEY` | No | — | TokenRouter API key for LLM evaluation |
 | `TOKENROUTER_MODEL` | No | `z-ai/glm-5.3-free` | TokenRouter model override |
 | `MINIMAX_API_KEY` | No | — | MiniMax API key for LLM evaluation |

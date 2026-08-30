@@ -51,6 +51,8 @@ services:
       # LLM provider API keys (enable memory auditing and semantic search)
       # At least one provider key is needed for memory features to work:
       NIM_API_KEY: "${NIM_API_KEY:-}"
+      NIM_MODEL: "${NIM_MODEL:-}"
+      NIM_BASE_URL: "${NIM_BASE_URL:-}"
       TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
       MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"

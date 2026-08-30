@@ -305,6 +305,8 @@ if mcp_resource_url = System.get_env("MCP_RESOURCE_URL") do
 end
 
 config :steward_acs, :nim_api_key, System.get_env("NIM_API_KEY", "")
+config :steward_acs, :nim_model, System.get_env("NIM_MODEL", "")
+config :steward_acs, :nim_base_url, System.get_env("NIM_BASE_URL", "")
 config :steward_acs, :tokenrouter_api_key, System.get_env("TOKENROUTER_API_KEY", "")
 config :steward_acs, :minimax_api_key, System.get_env("MINIMAX_API_KEY", "")
 config :steward_acs, :openai_api_key, System.get_env("OPENAI_API_KEY", "")

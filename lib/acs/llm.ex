@@ -554,6 +554,12 @@ defmodule Acs.LLM do
   # request.
   # OPENAI_MODEL      — override the model name (e.g., gpt-4o-mini, local-model)
   # OPENROUTER_MODEL  — override the model name
+  defp provider_overrides("nim", :model),
+    do: System.get_env("NIM_MODEL") || Application.get_env(:steward_acs, :nim_model)
+
+  defp provider_overrides("nim", :base_url),
+    do: System.get_env("NIM_BASE_URL") || Application.get_env(:steward_acs, :nim_base_url)
+
   defp provider_overrides("openai", :model),
     do: System.get_env("OPENAI_MODEL") || Application.get_env(:steward_acs, :openai_model)
 

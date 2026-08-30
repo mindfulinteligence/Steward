@@ -60,6 +60,8 @@ x-steward-acs: &steward_acs
     # the container — each key must be listed here for memory/skill auditing.
     ENABLED_LLM_PROVIDERS: "${ENABLED_LLM_PROVIDERS:-}"
     NIM_API_KEY: "${NIM_API_KEY:-}"
+    NIM_MODEL: "${NIM_MODEL:-}"
+    NIM_BASE_URL: "${NIM_BASE_URL:-}"
     TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
     MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
     OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
