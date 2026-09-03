@@ -11,6 +11,12 @@ defmodule Acs.Repo.Migrations.MemoryEmbeddingsOrg do
         ADD COLUMN IF NOT EXISTS org TEXT NOT NULL DEFAULT 'default'
       """)
 
+      # Raw execute/1 DDL is queued by the migration runner and is not
+      # guaranteed to have reached the database before a raw repo().query!
+      # call below on a connection that has never seen this table before
+      # (fresh install) — flush forces it to be sent first.
+      flush()
+
       configured_org =
         Application.get_env(:steward_acs, :org_name) ||
           Application.get_env(:steward_acs, :cluster_name, "default")

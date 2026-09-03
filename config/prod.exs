@@ -30,12 +30,25 @@ if repo_adapter == Ecto.Adapters.Postgres do
     ssl: System.get_env("PGSSL", "false") == "true"
 end
 
+# Phoenix's force_ssl is read via Application.compile_env, so it must be
+# resolved here (compile time), not in runtime.exs. Deployments with no TLS
+# terminator in front (fully internal, reached only over a private network)
+# have no proxy to set x-forwarded-proto — force_ssl would redirect every
+# plain-HTTP request, including server-to-server MCP calls, to a dead
+# https:// address. Opt out at build time with FORCE_SSL=false.
+force_ssl_config =
+  if System.get_env("FORCE_SSL", "true") in ~w(false 0) do
+    false
+  else
+    [rewrite_on: [:x_forwarded_proto], hsts: true]
+  end
+
 config :steward_acs, AcsWeb.Endpoint,
   url: [host: "localhost"],
   http: [port: String.to_integer(System.get_env("PORT", "4001"))],
   server: true,
   cache_static_manifest: "priv/static/cache_manifest.json",
-  force_ssl: [rewrite_on: [:x_forwarded_proto], hsts: true]
+  force_ssl: force_ssl_config
 
 config :steward_acs, :mcp_auth_local_fallback, false
 config :steward_acs, :secure_session_cookie, true
