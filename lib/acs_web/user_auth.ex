@@ -9,12 +9,15 @@ defmodule AcsWeb.UserAuth do
   alias Acs.Orgs
 
   @session_key :user_token
+  @known_accounts_cookie "_acs_known_accounts"
+  @known_accounts_max 8
 
   def log_in_user(conn, user, opts \\ []) do
     redirect_to = Keyword.get(opts, :redirect_to, "/")
 
     conn
     |> put_user_session(user)
+    |> remember_known_account(user)
     |> redirect(to: internal_path(redirect_to))
   end
 
@@ -46,7 +49,36 @@ defmodule AcsWeb.UserAuth do
 
   def fetch_current_user(conn, _opts) do
     user_token = get_session(conn, @session_key)
-    assign(conn, :current_user, user_token && Accounts.get_user_by_session_token(user_token))
+
+    conn
+    |> assign(:current_user, user_token && Accounts.get_user_by_session_token(user_token))
+    |> assign(:known_accounts, known_accounts(conn))
+  end
+
+  @doc """
+  Orgs/emails previously signed into on this browser, newest first, each with
+  a ready-to-navigate `"url"` and whether it's the org for the current host.
+  Backed by a long-lived cookie shared across tenant subdomains, so the
+  switcher survives across sessions without any server-side account model.
+  """
+  def known_accounts(conn) do
+    if Acs.Org.multi_tenant?() do
+      conn = fetch_cookies(conn)
+      current_org = conn.assigns[:current_org]
+
+      conn.cookies
+      |> Map.get(@known_accounts_cookie)
+      |> decode_known_accounts()
+      |> Enum.sort_by(& &1["at"], :desc)
+      |> Enum.map(fn entry ->
+        entry
+        |> Map.put("url", tenant_url(conn, entry["org"], "/") || "")
+        |> Map.put("current", entry["org"] == current_org)
+      end)
+      |> Enum.reject(&(&1["url"] == ""))
+    else
+      []
+    end
   end
 
   def redirect_if_authenticated(conn, _opts) do
@@ -132,8 +164,13 @@ defmodule AcsWeb.UserAuth do
     %{
       "user_token" => get_session(conn, @session_key),
       "current_org" => conn.assigns[:current_org],
-      "host_type" => Atom.to_string(conn.assigns[:host_type] || :unknown)
+      "host_type" => Atom.to_string(conn.assigns[:host_type] || :unknown),
+      "known_accounts" => conn.assigns[:known_accounts] || []
     }
+  end
+
+  def on_mount(:assign_known_accounts, _params, session, socket) do
+    {:cont, Phoenix.Component.assign(socket, :known_accounts, session["known_accounts"] || [])}
   end
 
   def on_mount(:assign_org, _params, session, socket) do
@@ -464,4 +501,93 @@ defmodule AcsWeb.UserAuth do
   defp valid_host?(host) do
     Regex.match?(~r/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/, String.downcase(host))
   end
+
+  defp remember_known_account(conn, user) do
+    org = conn.assigns[:current_org]
+    email = Map.get(user, :email) || Map.get(user, "email")
+
+    if Acs.Org.multi_tenant?() and is_binary(org) and org != "" and is_binary(email) and
+         email != "" do
+      put_known_accounts_cookie(conn, org, email)
+    else
+      conn
+    end
+  end
+
+  defp put_known_accounts_cookie(conn, org, email) do
+    conn = fetch_cookies(conn)
+
+    entries =
+      conn.cookies
+      |> Map.get(@known_accounts_cookie)
+      |> decode_known_accounts()
+      |> Enum.reject(&same_account?(&1, org, email))
+
+    org_name =
+      case Orgs.get_by_slug(org) do
+        %{name: name} when is_binary(name) and name != "" -> name
+        _ -> org
+      end
+
+    entry = %{
+      "org" => org,
+      "name" => org_name,
+      "email" => email,
+      "at" => DateTime.to_iso8601(DateTime.utc_now())
+    }
+
+    entries = [entry | entries] |> Enum.take(@known_accounts_max)
+
+    put_resp_cookie(
+      conn,
+      @known_accounts_cookie,
+      Jason.encode!(entries),
+      known_accounts_cookie_opts()
+    )
+  end
+
+  defp known_accounts_cookie_opts do
+    [
+      # 180 days — outlives any single login session; this cookie only ever
+      # holds {org, email, timestamp} hints, never a credential, so a long
+      # lifetime and cross-subdomain domain (below) carry no auth risk.
+      max_age: 60 * 60 * 24 * 180,
+      http_only: true,
+      secure: Application.get_env(:steward_acs, :secure_session_cookie, false),
+      same_site: "Lax",
+      path: "/"
+    ]
+    |> maybe_put_shared_domain()
+  end
+
+  defp maybe_put_shared_domain(opts) do
+    case Application.get_env(:steward_acs, :base_domain) do
+      base when is_binary(base) and base != "" and base != "localhost" ->
+        Keyword.put(opts, :domain, "." <> base)
+
+      _ ->
+        opts
+    end
+  end
+
+  defp decode_known_accounts(raw) when is_binary(raw) do
+    case Jason.decode(raw) do
+      {:ok, list} when is_list(list) -> Enum.filter(list, &valid_account_entry?/1)
+      _ -> []
+    end
+  end
+
+  defp decode_known_accounts(_), do: []
+
+  defp valid_account_entry?(%{"org" => org, "email" => email})
+       when is_binary(org) and org != "" and is_binary(email) and email != "",
+       do: true
+
+  defp valid_account_entry?(_), do: false
+
+  defp same_account?(%{"org" => org, "email" => email}, org, target_email) do
+    String.downcase(email) == String.downcase(target_email)
+  end
+
+  defp same_account?(_, _, _), do: false
 end

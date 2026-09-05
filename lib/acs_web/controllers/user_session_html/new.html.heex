@@ -10,6 +10,21 @@
     <.flash_group flash={@flash} />
 
     <%= if @oidc_enabled do %>
+      <%= if (known_accounts = assigns[:known_accounts] || []) != [] do %>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px;">
+          <div class="text-dim" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;">Continue as</div>
+          <%= for account <- known_accounts do %>
+            <a
+              href={account["url"]}
+              style="display: flex; flex-direction: column; padding: 10px 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); text-decoration: none;"
+            >
+              <span style="font-size: 0.85rem; color: var(--text);"><%= account["name"] %></span>
+              <span style="font-size: 0.72rem; color: var(--muted);"><%= account["email"] %></span>
+            </a>
+          <% end %>
+        </div>
+        <div class="text-dim" style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px;">Or sign in with another account</div>
+      <% end %>
       <a href={~p"/auth/log_in"} class="btn btn-primary" style="display: block; width: 100%; text-align: center;">
         Continue with Auth0
       </a>

@@ -83,6 +83,24 @@
             <%= if current_role do %>
               <div class="user-dropdown-role"><%= current_role %></div>
             <% end %>
+            <%= if (known_accounts = assigns[:known_accounts] || []) != [] do %>
+              <div class="user-dropdown-divider"></div>
+              <div class="user-dropdown-label">Switch organization</div>
+              <%= for account <- known_accounts do %>
+                <%= if account["current"] do %>
+                  <div class="org-switch-item current" aria-current="true">
+                    <span class="org-switch-name"><%= account["name"] %></span>
+                    <span class="org-switch-email"><%= account["email"] %></span>
+                  </div>
+                <% else %>
+                  <a href={account["url"]} class="org-switch-item">
+                    <span class="org-switch-name"><%= account["name"] %></span>
+                    <span class="org-switch-email"><%= account["email"] %></span>
+                  </a>
+                <% end %>
+              <% end %>
+              <a href="/auth/log_in" class="gear-item">+ Log into another organization</a>
+            <% end %>
             <div class="user-dropdown-divider"></div>
             <.link navigate={~p"/tools"} class={"gear-item #{if nav_current_path == "/tools", do: "active"}"}>Tools</.link>
             <.link navigate={~p"/tools/requests"} class={"gear-item #{if String.starts_with?(nav_current_path, "/tools/requests"), do: "active"}"}>

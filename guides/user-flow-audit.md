@@ -59,7 +59,8 @@ Landing, deep link, or invitation
    - **Recommendation:** model `loading | loaded | empty | error` explicitly, retain last-known data, and provide contextual retry actions. Organization creation must remain blocked until account lookup succeeds.
 
 6. **Invitation account mismatch is a dead end.** The page identifies the required email but does not provide a “sign out and continue as invited email” action that preserves the invitation URL.
-   - **Recommendation:** add an account-switch action that keeps the token through logout/OIDC, and explain the invitation context before authentication.
+   - **Partially implemented:** a general cross-organization account switcher shipped — the user menu and sign-in page now remember every org/email combination previously signed into on this browser (via a long-lived, `HttpOnly` cookie shared across tenant subdomains) and offer one-click links back into each. This gives most users a fast way to reach the account an invitation names.
+   - **Next:** the invitation-mismatch page itself still does not surface this switcher or preserve the invitation URL through a sign-out/reauthentication round trip — wire the two together so mismatched invitations resolve without the user having to re-find the link.
 
 7. **Wrong-workspace and stale-permission paths render raw 404/403 text.** These states provide no route back into the designed journey.
    - **Recommendation:** render privacy-safe branded recovery pages with “Open my workspace,” “Account desk,” and “Sign out.” Preserve the intended path when reauthentication could resolve it.

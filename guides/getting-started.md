@@ -33,6 +33,8 @@ Choose one of these paths:
 1. **Use a hosted organization:** create or join an organization from the Steward sign-in page. Your organization gets an isolated workspace and MCP endpoint.
 2. **Run Steward yourself:** follow the [installation guide](/docs/install). The default local setup uses Docker, SQLite, and no LLM provider.
 
+Belong to more than one organization? The sign-in page and the dashboard's user menu both remember every organization and email you've previously signed into on that browser and offer a one-click **Switch organization** link back into each — no need to track down each organization's URL or re-enter credentials by hand.
+
 After setup, open the Steward dashboard. It shows the MCP endpoint and copy-ready instructions for connecting chat and coding agents.
 
 ## Connect a coding agent

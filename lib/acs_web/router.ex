@@ -67,7 +67,8 @@ defmodule AcsWeb.Router do
       session: {AcsWeb.UserAuth, :fetch_user_token, []},
       on_mount: [
         {AcsWeb.UserAuth, :ensure_authenticated},
-        {AcsWeb.UserAuth, :ensure_account_host}
+        {AcsWeb.UserAuth, :ensure_account_host},
+        {AcsWeb.UserAuth, :assign_known_accounts}
       ] do
       live "/onboarding", AcsLive.OnboardingLive, :index
       live "/invitations/:token", AcsLive.InvitationLive, :show
@@ -79,7 +80,8 @@ defmodule AcsWeb.Router do
     on_mount: [
       {AcsWeb.UserAuth, :ensure_authenticated},
       {AcsWeb.UserAuth, :assign_org},
-      {AcsWeb.UserAuth, :ensure_tenant_member}
+      {AcsWeb.UserAuth, :ensure_tenant_member},
+      {AcsWeb.UserAuth, :assign_known_accounts}
     ] do
     scope "/", AcsWeb do
       pipe_through [:browser, :require_auth, :tenant_user]
@@ -102,7 +104,8 @@ defmodule AcsWeb.Router do
         {AcsWeb.UserAuth, :assign_org},
         {AcsWeb.UserAuth, :ensure_authenticated},
         {AcsWeb.UserAuth, :ensure_tenant_member},
-        {AcsWeb.UserAuth, :ensure_org_admin}
+        {AcsWeb.UserAuth, :ensure_org_admin},
+        {AcsWeb.UserAuth, :assign_known_accounts}
       ] do
       live "/memories", AcsLive.MemoryLive, :index
     end
@@ -113,7 +116,8 @@ defmodule AcsWeb.Router do
         {AcsWeb.UserAuth, :assign_org},
         {AcsWeb.UserAuth, :ensure_authenticated},
         {AcsWeb.UserAuth, :ensure_tenant_member},
-        {AcsWeb.UserAuth, :ensure_org_admin}
+        {AcsWeb.UserAuth, :ensure_org_admin},
+        {AcsWeb.UserAuth, :assign_known_accounts}
       ] do
       live "/settings", AcsLive.SettingsLive, :index
       live "/settings/members", AcsLive.MembersLive, :index

@@ -1806,6 +1806,44 @@
         margin: 4px 0;
       }
 
+      .user-dropdown-label {
+        padding: 4px 12px 2px;
+        font-size: 0.68rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .org-switch-item {
+        display: flex;
+        flex-direction: column;
+        padding: 6px 12px;
+        border-radius: var(--radius-sm);
+        transition: all var(--transition-fast);
+      }
+
+      a.org-switch-item:hover {
+        background: var(--bg-elevated);
+      }
+
+      .org-switch-item.current {
+        cursor: default;
+      }
+
+      .org-switch-name {
+        font-size: 0.78rem;
+        color: var(--text);
+      }
+
+      .org-switch-item.current .org-switch-name {
+        color: var(--accent);
+      }
+
+      .org-switch-email {
+        font-size: 0.68rem;
+        color: var(--muted);
+      }
+
       .account-shell {
         width: min(100%, 1180px);
         margin: 0 auto;
