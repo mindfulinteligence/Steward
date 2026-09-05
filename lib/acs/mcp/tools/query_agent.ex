@@ -113,7 +113,7 @@ defmodule Acs.MCP.Tools.QueryAgent do
       search_opts
       |> Keyword.merge(limit: limit)
       |> maybe_put(:kind, kind)
-      |> maybe_put(:status, status)
+      |> Keyword.put(:status, status)
 
     case {query, team, project} do
       {q, nil, nil} when is_binary(q) and q != "" ->

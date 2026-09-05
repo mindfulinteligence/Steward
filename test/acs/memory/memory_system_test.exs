@@ -383,29 +383,29 @@ defmodule Acs.MemorySystemTest do
     end
 
     test "finds memories by keyword in title" do
-      results = Search.search("Cache")
+      results = Search.search("Cache", status: "all")
       assert results != []
       assert Enum.any?(results, fn m -> m.id == "search_temporal_001" end)
     end
 
     test "finds memories by lowercase keyword" do
-      results = Search.search("cache")
+      results = Search.search("cache", status: "all")
       assert results != []
     end
 
     test "finds memories by keyword in content" do
-      results = Search.search("invalidation")
+      results = Search.search("invalidation", status: "all")
       assert results != []
       assert Enum.any?(results, fn m -> m.id == "search_temporal_001" end)
     end
 
     test "finds memories by keyword in summary" do
-      results = Search.search("ordering")
+      results = Search.search("ordering", status: "all")
       assert results != []
     end
 
     test "matches multi-keyword queries whose words are spread across fields" do
-      results = Search.search("release ordering invalidation")
+      results = Search.search("release ordering invalidation", status: "all")
       assert Enum.any?(results, fn m -> m.id == "search_temporal_001" end)
     end
 
@@ -425,7 +425,7 @@ defmodule Acs.MemorySystemTest do
       Indexer.upsert_memory(other)
 
       # Search with scope filter should only return memories in that scope
-      results = Search.search("cache", scope_path: "test/search")
+      results = Search.search("cache", scope_path: "test/search", status: "all")
       assert results != []
       assert Enum.all?(results, fn m -> String.starts_with?(m.scope_path, "test/search") end)
     end
@@ -939,7 +939,7 @@ defmodule Acs.MemorySystemTest do
       assert {:ok, _} = Indexer.upsert_memory(memory)
 
       # 3. Verify it's searchable
-      results = Search.search("Important Testing")
+      results = Search.search("Important Testing", status: "all")
       assert Enum.any?(results, fn m -> m.id == "e2e_lifecycle_001" end)
 
       # 4. Approve it
@@ -988,7 +988,7 @@ defmodule Acs.MemorySystemTest do
       assert {:ok, _} = Indexer.upsert_memory(loaded)
 
       # 4. Search for it
-      results = Search.search("Pipeline Test")
+      results = Search.search("Pipeline Test", status: "all")
       assert Enum.any?(results, fn m -> m.id == "e2e_pipeline_001" end)
     end
   end

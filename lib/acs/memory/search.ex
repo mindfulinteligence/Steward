@@ -31,6 +31,7 @@ defmodule Acs.Memory.Search do
   - Other options passed through to the underlying search (scope_path, kind, limit, etc.)
   """
   def search(query, opts \\ []) do
+    opts = default_status_if_unset(opts)
     mode = Keyword.get(opts, :mode, "auto")
 
     case mode do
@@ -52,6 +53,7 @@ defmodule Acs.Memory.Search do
   When only keyword results are available, scores_map is empty.
   """
   def search_with_scores(query, opts \\ []) do
+    opts = default_status_if_unset(opts)
     mode = Keyword.get(opts, :mode, "auto")
 
     case mode do
@@ -247,6 +249,7 @@ defmodule Acs.Memory.Search do
   Lists memories with structured filters.
   """
   def list(opts \\ []) do
+    opts = default_status_if_unset(opts)
     Acs.Memory.Indexer.list_memories(opts)
   end
 
@@ -270,6 +273,15 @@ defmodule Acs.Memory.Search do
     approved = Enum.filter(memories, fn m -> m.status == "approved" end)
 
     Enum.sort_by(approved, & &1.importance, :desc)
+  end
+
+  defp default_status_if_unset(opts) do
+    case Keyword.fetch(opts, :status) do
+      :error -> Keyword.put(opts, :status, ["approved", "stale"])
+      {:ok, nil} -> opts
+      {:ok, "all"} -> Keyword.put(opts, :status, nil)
+      {:ok, _other} -> opts
+    end
   end
 
   defp extract_keywords(context) when is_binary(context) do
