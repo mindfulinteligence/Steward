@@ -41,6 +41,8 @@ Push to `dev` (and PRs targeting `prod`) triggers [`.github/workflows/ci.yml`](.
 
 - `readiness` — runs `scripts/repo-readiness.sh` against the Postgres 16 service. It checks whitespace, formatting, warnings-as-errors compilation, Credo, tests, a production release build, and the disposable MCP tool smoke.
 - Production containers do not run recurring database probes: `/mcp/health` is DB-free, and the stale-agent sweep opens a transaction only when it has cleanup work. `scripts/deploy.sh` performs a bounded readiness probe during cutover, and the post-deploy smoke runs once.
+- Production Ecto queries emit OpenTelemetry spans under `steward_acs.repo.query`, including total, query, queue, decode, and idle timing plus error status. SQL statements remain disabled, so query parameters and stored content are not exported.
+- Agents audit production through the project-local Axiom MCP: `steward_logs` contains HTTP/Ecto traces, errors, `vm.metrics`, and `vm.jump`; `steward-acs-metrics` contains host CPU, memory, filesystem, and network series; `steward_meta_analytics` contains tool reliability and Meta-Harness signals. Database URLs and URL query strings are redacted before trace export. Dashboards are optional views, not the management interface.
 
 Run the exact CI contract locally before pushing:
 
@@ -93,6 +95,8 @@ Pick the smallest layer that can catch the bug. Update docs/skill in the same ch
 5. **No smoke script edit required** — deploy smoke evals live `chat_surface/0` from the running container and compares to `/mcp/chat/sse` `tools/list`. Shipping a mismatched image fails smoke automatically when `SMOKE_API_KEY` is set.
 6. Coding-only tools: ensure `/mcp/coding/sse` still returns **more** tools than chat (smoke asserts divergence).
 
+For stale PostgreSQL recovery changes, leave database connections idle beyond the provider's close window, then send concurrent tenant MCP requests. They must serialize recovery, recheck the pool before resetting it, and succeed after at most one pool reset. Confirm no background ping was added and no write is retried.
+
 ### B. New HTTP route / health invariant
 
 - Prefer ExUnit + ConnCase / LiveView tests in CI.
@@ -103,6 +107,8 @@ Pick the smallest layer that can catch the bug. Update docs/skill in the same ch
 - Add to CI `test` / `release` / `lint` install steps in `.github/workflows/ci.yml` if the runner needs it.
 - If the release image needs it: update `Dockerfile` and confirm the `release` CI job still builds.
 - Local: document in `.env.example` / installer skill when agents must configure it.
+
+Compile-time documentation is also a release dependency: Docker must copy `README.md`, `guides/`, and `priv/` before `mix compile`. The docs controller regression test enforces that packaging contract.
 
 ### D. New compose / env / Infisical secret
 

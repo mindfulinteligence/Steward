@@ -549,19 +549,26 @@ defmodule Acs.LLM do
     end
   end
 
-  # Base URLs for openai and openrouter are hardcoded in their provider configs
-  # (LLMUtils.Providers.OpenAI => "https://api.openai.com/v1", the app-side
-  # openrouter config below => "https://openrouter.ai/api/v1"). Only the model is
-  # overridable via env vars — an empty or absent OPENAI_BASE_URL /
-  # OPENROUTER_BASE_URL must never clobber the canonical URL (regression:
-  # "scheme is required for url: /chat/completions").
+  # Provider base URLs are hardcoded in provider configs. Only models are
+  # overridable via env vars, so an empty URL can never produce a malformed
+  # request.
   # OPENAI_MODEL      — override the model name (e.g., gpt-4o-mini, local-model)
   # OPENROUTER_MODEL  — override the model name
+  defp provider_overrides("nim", :model),
+    do: System.get_env("NIM_MODEL") || Application.get_env(:steward_acs, :nim_model)
+
+  defp provider_overrides("nim", :base_url),
+    do: System.get_env("NIM_BASE_URL") || Application.get_env(:steward_acs, :nim_base_url)
+
   defp provider_overrides("openai", :model),
     do: System.get_env("OPENAI_MODEL") || Application.get_env(:steward_acs, :openai_model)
 
   defp provider_overrides("openrouter", :model),
     do: System.get_env("OPENROUTER_MODEL") || Application.get_env(:steward_acs, :openrouter_model)
+
+  defp provider_overrides("tokenrouter", :model),
+    do:
+      System.get_env("TOKENROUTER_MODEL") || Application.get_env(:steward_acs, :tokenrouter_model)
 
   defp provider_overrides(_, _), do: nil
 
@@ -571,6 +578,20 @@ defmodule Acs.LLM do
   # is the single config resolution point used by call_provider.
 
   @app_provider_configs %{
+    "tokenrouter" => %{
+      id: "tokenrouter",
+      name: "TokenRouter",
+      base_url: "https://api.tokenrouter.com/v1",
+      default_model: "z-ai/glm-5.3-free",
+      auth_type: :bearer,
+      api_key_env: "TOKENROUTER_API_KEY",
+      supports_json_mode: true,
+      supports_system_role: true,
+      rate_limit: nil,
+      rate_window_ms: 60_000,
+      models: ["z-ai/glm-5.3-free"],
+      suppress_thinking: false
+    },
     "openrouter" => %{
       id: "openrouter",
       name: "OpenRouter",
@@ -597,7 +618,12 @@ defmodule Acs.LLM do
 
   defp resolve_api_key(provider_id) do
     Application.get_env(:steward_acs, :"#{provider_id}_api_key") ||
-      System.get_env(LLMUtils.Provider.env_key(provider_id))
+      System.get_env(
+        case provider_id do
+          "tokenrouter" -> "TOKENROUTER_API_KEY"
+          _ -> LLMUtils.Provider.env_key(provider_id)
+        end
+      )
   end
 
   # ── Evaluation extraction ────────────────────────────────────────────

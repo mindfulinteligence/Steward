@@ -47,7 +47,7 @@ curl http://localhost:4001/mcp/health
 # Open http://localhost:4001 in your browser and continue through Auth0 Universal Login.
 ```
 
-> **Note:** Memory auditing and semantic search need at least one LLM provider API key. Set `NIM_API_KEY`, `MIMO_API_KEY`, `MINIMAX_API_KEY`, or `OPENAI_API_KEY` in `.env` (or directly in `docker-compose.yml`) to enable them. Without these, you'll see `Audit failed: :no_providers_enabled` in the logs.
+> **Note:** Memory auditing and semantic search need at least one LLM provider API key. Set `TOKENROUTER_API_KEY`, `NIM_API_KEY`, `MINIMAX_API_KEY`, or `OPENAI_API_KEY` in `.env` (or directly in `docker-compose.yml`) to enable them. Without these, you'll see `Audit failed: :no_providers_enabled` in the logs.
 
 ### From Source
 
@@ -154,9 +154,12 @@ The file watcher debounces events (1000ms) and excludes `.obsidian/` internal fi
 | `OLLAMA_URL` | No | `http://localhost:11434` | Ollama endpoint for local embeddings |
 | `MEMORY_STORE` | No | `yaml` | Storage format: `yaml` or `obsidian` |
 | `OBSIDIAN_VAULT_PATH` | No | — | Filesystem path to Obsidian vault |
-| `ENABLED_LLM_PROVIDERS` | No | all | Comma-separated whitelist (e.g. `mimo,nim`) |
+| `ENABLED_LLM_PROVIDERS` | No | all | Comma-separated whitelist (e.g. `tokenrouter,nim`) |
 | `NIM_API_KEY` | No | — | NVIDIA NIM API key for LLM evaluation |
-| `MIMO_API_KEY` | No | — | Mimo API key for LLM evaluation |
+| `NIM_MODEL` | No | `meta/llama-3.3-70b-instruct` | NIM model override (e.g. `nvidia/nemotron-3.5-lightning-30b-a3b`) |
+| `NIM_BASE_URL` | No | `https://integrate.api.nvidia.com/v1` | NIM API base URL override |
+| `TOKENROUTER_API_KEY` | No | — | TokenRouter API key for LLM evaluation |
+| `TOKENROUTER_MODEL` | No | `z-ai/glm-5.3-free` | TokenRouter model override |
 | `MINIMAX_API_KEY` | No | — | MiniMax API key for LLM evaluation |
 | `OPENAI_API_KEY` | No | — | OpenAI API key for LLM evaluation |
 | `OPENAI_BASE_URL` | No | — | Custom OpenAI-compatible endpoint URL |
@@ -185,11 +188,11 @@ Memory auditing and semantic search need an LLM provider. Set at least one of th
 | Variable | Provider |
 |---|---|
 | `NIM_API_KEY` | NVIDIA NIM |
-| `MIMO_API_KEY` | Mimo |
+| `TOKENROUTER_API_KEY` | TokenRouter (OpenAI-compatible) |
 | `MINIMAX_API_KEY` | MiniMax |
 | `OPENAI_API_KEY` | OpenAI (also set `OPENAI_BASE_URL` / `OPENAI_MODEL` for custom endpoints) |
 
-You can restrict which providers are used via `ENABLED_LLM_PROVIDERS` (comma-separated, e.g. `mimo,nim`). By default all enabled providers with valid API keys are tried in priority order.
+You can restrict which providers are used via `ENABLED_LLM_PROVIDERS` (comma-separated, e.g. `tokenrouter,nim`). By default all enabled providers with valid API keys are tried in priority order. TokenRouter uses `https://api.tokenrouter.com/v1` and defaults to `z-ai/glm-5.3-free`.
 
 ### MCP Tool Definitions
 

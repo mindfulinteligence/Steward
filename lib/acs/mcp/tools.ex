@@ -1197,7 +1197,7 @@ defmodule Acs.MCP.Tools do
       ),
       tool_def(
         "create_org",
-        "Provision a new organization with subdomain URL. Creates vault directory. Admin only. Multi-tenant mode required.",
+        "Provision a new organization with subdomain URL. Also mints an org-scoped collaborator developer API key and returns it once as developer_key (store it immediately — it cannot be retrieved again). Creates vault directory. Admin only. Multi-tenant mode required.",
         %{
           "name" => %{"type" => "string", "description" => "Display name (e.g. Acme Corp)"},
           "slug" => %{"type" => "string", "description" => "URL slug (e.g. acme)"},

@@ -122,6 +122,15 @@ defmodule Acs.LLMTest do
                "Map.get(@app_provider_configs, provider_id) || LLMUtils.Providers.get(provider_id)"
     end
 
+    test "defines TokenRouter with its OpenAI-compatible endpoint and model" do
+      source = File.read!(Path.join([__DIR__, "../../lib/acs/llm.ex"]))
+
+      assert source =~ ~s|"tokenrouter" => %{|
+      assert source =~ "base_url: \"https://api.tokenrouter.com/v1\""
+      assert source =~ "default_model: \"z-ai/glm-5.3-free\""
+      assert source =~ "TOKENROUTER_API_KEY"
+    end
+
     test "get_enabled_providers includes openrouter when routed and keyed" do
       old_priority = System.get_env("LLM_PRIORITY_INTAKE")
       old_key = Application.get_env(:steward_acs, :openrouter_api_key)

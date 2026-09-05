@@ -60,14 +60,12 @@ x-steward-acs: &steward_acs
     # the container — each key must be listed here for memory/skill auditing.
     ENABLED_LLM_PROVIDERS: "${ENABLED_LLM_PROVIDERS:-}"
     NIM_API_KEY: "${NIM_API_KEY:-}"
-    MIMO_API_KEY: "${MIMO_API_KEY:-}"
+    NIM_MODEL: "${NIM_MODEL:-}"
+    NIM_BASE_URL: "${NIM_BASE_URL:-}"
+    TOKENROUTER_API_KEY: "${TOKENROUTER_API_KEY:-}"
     MINIMAX_API_KEY: "${MINIMAX_API_KEY:-}"
     OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-    OPENAI_BASE_URL: "${OPENAI_BASE_URL:-}"
-    OPENAI_MODEL: "${OPENAI_MODEL:-}"
-    OPENROUTER_API_KEY: "${OPENROUTER_API_KEY:-}"
-    OPENROUTER_BASE_URL: "${OPENROUTER_BASE_URL:-}"
-    OPENROUTER_MODEL: "${OPENROUTER_MODEL:-}"
+    TOKENROUTER_MODEL: "${TOKENROUTER_MODEL:-z-ai/glm-5.3-free}"
     # Per-location, per-call-type LLM routing (see Acs.LLM.Router).
     ACS_REGION: "${ACS_REGION:-default}"
     LLM_PRIORITY_INTAKE: "${LLM_PRIORITY_INTAKE:-}"

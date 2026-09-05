@@ -98,17 +98,30 @@ defmodule Acs.MCP.Tools.AdminHandlers do
       true ->
         case Acs.Orgs.create(%{name: name, slug: slug, subdomain: subdomain, plan: plan}) do
           {:ok, org} ->
-            {:ok,
-             %{
-               name: org.name,
-               slug: org.slug,
-               subdomain: org.subdomain,
-               plan: org.plan,
-               url: "https://#{org.subdomain}.#{Acs.Org.base_domain()}",
-               obsidian_url: "https://#{org.subdomain}.obsidian.#{Acs.Org.base_domain()}",
-               syncthing_note:
-                 "Add syncthing_#{org.subdomain} service to docker-compose and a Caddy route for #{org.subdomain}.obsidian.#{Acs.Org.base_domain()}"
-             }}
+            case Developers.generate_key("#{org.slug}-provisioning",
+                   role: "collaborator",
+                   org: org.slug
+                 ) do
+              {:ok, %{key: raw_key, developer: dev}} ->
+                {:ok,
+                 %{
+                   name: org.name,
+                   slug: org.slug,
+                   subdomain: org.subdomain,
+                   plan: org.plan,
+                   url: "https://#{org.subdomain}.#{Acs.Org.base_domain()}",
+                   obsidian_url: "https://#{org.subdomain}.obsidian.#{Acs.Org.base_domain()}",
+                   syncthing_note:
+                     "Add syncthing_#{org.subdomain} service to docker-compose and a Caddy route for #{org.subdomain}.obsidian.#{Acs.Org.base_domain()}",
+                   developer_key: raw_key,
+                   key_prefix: dev.key_prefix,
+                   developer_name: dev.developer_name
+                 }}
+
+              {:error, reason} ->
+                {:error,
+                 "Org #{org.slug} created, but developer key provisioning failed: #{inspect(reason)}"}
+            end
 
           {:error, errors} ->
             {:error, "Failed to create org: #{inspect(errors)}"}

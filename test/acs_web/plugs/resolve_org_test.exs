@@ -126,4 +126,31 @@ defmodule AcsWeb.Plugs.ResolveOrgTest do
     refute result.halted
     assert result.assigns.host_type == :account_tenant
   end
+
+  test "rechecks stale pool recovery before resetting" do
+    test_pid = self()
+
+    lookup = fn ->
+      case Process.get(:org_lookup_attempt, 0) do
+        0 ->
+          Process.put(:org_lookup_attempt, 1)
+          raise DBConnection.ConnectionError, message: "ssl send: closed"
+
+        1 ->
+          Process.put(:org_lookup_attempt, 2)
+          raise DBConnection.ConnectionError, message: "ssl send: closed"
+
+        2 ->
+          :found
+      end
+    end
+
+    assert :found =
+             ResolveOrg.retry_org_lookup(lookup, fn interval ->
+               send(test_pid, {:disconnected, interval})
+               :ok
+             end)
+
+    assert_received {:disconnected, 0}
+  end
 end

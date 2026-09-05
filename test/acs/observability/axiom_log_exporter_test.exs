@@ -61,19 +61,24 @@ defmodule Acs.Observability.AxiomLogExporterTest do
     assert {:ok, _json} = Jason.encode(event)
   end
 
-  test "redacts URL query attributes before spans reach the OTLP batch processor" do
+  test "redacts URL query and database URL attributes before OTLP export" do
     attributes =
       :otel_attributes.new(
-        %{:"url.query" => "api_key=secret", :"http.request.method" => "GET"},
+        %{
+          :"url.query" => "api_key=secret",
+          :"db.url" => "postgres://user:password@example.test/database",
+          :"http.request.method" => "GET"
+        },
         10,
         1_000
       )
 
     redacted =
-      Acs.Observability.RedactingBatchSpanProcessor.redact_query_attribute(attributes)
+      Acs.Observability.RedactingBatchSpanProcessor.redact_sensitive_attributes(attributes)
       |> :otel_attributes.map()
 
     assert redacted[:"url.query"] == "[REDACTED]"
+    assert redacted[:"db.url"] == "[REDACTED]"
     assert redacted[:"http.request.method"] == "GET"
   end
 

@@ -7,6 +7,7 @@ repo_adapter =
   end
 
 config :steward_acs, :repo_adapter, repo_adapter
+config :steward_acs, :log_analyzer_enabled, false
 
 # Individual PG settings are fallbacks when DATABASE_URL is not set at runtime.
 if repo_adapter == Ecto.Adapters.Postgres do

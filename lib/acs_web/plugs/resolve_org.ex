@@ -29,7 +29,7 @@ defmodule AcsWeb.Plugs.ResolveOrg do
     else
       case Acs.Org.extract_subdomain(conn.host) do
         subdomain when is_binary(subdomain) ->
-          case Acs.Orgs.get_by_subdomain(subdomain) do
+          case find_org(subdomain) do
             nil ->
               unknown_host(conn)
 
@@ -52,7 +52,7 @@ defmodule AcsWeb.Plugs.ResolveOrg do
   defp resolve_account_host(conn) do
     case Acs.Org.extract_subdomain(conn.host) do
       subdomain when is_binary(subdomain) ->
-        case Acs.Orgs.get_by_subdomain(subdomain) do
+        case find_org(subdomain) do
           nil ->
             assign(conn, :host_type, :account)
 
@@ -82,6 +82,31 @@ defmodule AcsWeb.Plugs.ResolveOrg do
     conn
     |> assign(:host_type, :account_tenant)
     |> assign(:current_org, slug)
+  end
+
+  defp find_org(subdomain) do
+    retry_org_lookup(fn -> Acs.Orgs.get_by_subdomain(subdomain) end)
+  end
+
+  @doc false
+  def retry_org_lookup(lookup, disconnect \\ &Acs.Repo.disconnect_all/1) do
+    lookup.()
+  rescue
+    DBConnection.ConnectionError ->
+      # ponytail: one lock per node; each node owns an independent database pool.
+      :global.trans({__MODULE__, :stale_pool_recovery}, fn ->
+        try do
+          lookup.()
+        rescue
+          error in DBConnection.ConnectionError ->
+            Logger.warning("resetting stale database pool before retrying tenant lookup",
+              error: Exception.message(error)
+            )
+
+            :ok = disconnect.(0)
+            lookup.()
+        end
+      end)
   end
 
   # Scanner noise (www/m/portal/…) is expected — 404 is enough. Keep WARN for

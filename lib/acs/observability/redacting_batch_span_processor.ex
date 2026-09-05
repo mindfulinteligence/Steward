@@ -20,7 +20,7 @@ defmodule Acs.Observability.RedactingBatchSpanProcessor do
   @impl true
   def on_end(span_record, config) do
     attributes = span(span_record, :attributes)
-    sanitized_span = span(span_record, attributes: redact_query_attribute(attributes))
+    sanitized_span = span(span_record, attributes: redact_sensitive_attributes(attributes))
     :otel_batch_processor.on_end(sanitized_span, config)
   end
 
@@ -28,10 +28,10 @@ defmodule Acs.Observability.RedactingBatchSpanProcessor do
   def force_flush(config), do: :otel_batch_processor.force_flush(config)
 
   @doc false
-  def redact_query_attribute(attributes) do
+  def redact_sensitive_attributes(attributes) do
     attribute_map = :otel_attributes.map(attributes)
 
-    Enum.reduce([:"url.query", "url.query"], attributes, fn key, acc ->
+    Enum.reduce([:"url.query", "url.query", :"db.url", "db.url"], attributes, fn key, acc ->
       if Map.has_key?(attribute_map, key) do
         :otel_attributes.set(key, "[REDACTED]", acc)
       else

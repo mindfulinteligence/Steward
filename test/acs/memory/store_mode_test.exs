@@ -253,6 +253,22 @@ defmodule Acs.Memory.StoreModeTest do
     assert Acs.Application.memory_background_children(true, false) == []
   end
 
+  test "production can disable the log analyzer worker" do
+    previous = Application.get_env(:steward_acs, :log_analyzer_enabled)
+
+    on_exit(fn ->
+      if is_nil(previous),
+        do: Application.delete_env(:steward_acs, :log_analyzer_enabled),
+        else: Application.put_env(:steward_acs, :log_analyzer_enabled, previous)
+    end)
+
+    Application.put_env(:steward_acs, :log_analyzer_enabled, false)
+    assert Acs.Application.log_analyzer_children() == []
+
+    Application.put_env(:steward_acs, :log_analyzer_enabled, true)
+    assert Acs.Application.log_analyzer_children() == [Acs.LogAnalyzer]
+  end
+
   test "approve/reject transition clears human-review flags from the projection" do
     Application.put_env(:steward_acs, :multi_tenant, true)
     org = create_org("ledger-review-clear")
