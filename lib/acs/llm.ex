@@ -697,14 +697,22 @@ defmodule Acs.LLM do
   # Checks Application config first (set in runtime.exs), then system env.
 
   defp resolve_api_key(provider_id) do
-    Application.get_env(:steward_acs, :"#{provider_id}_api_key") ||
-      System.get_env(
-        case provider_id do
-          "tokenrouter" -> "TOKENROUTER_API_KEY"
-          "anthropic" -> "ANTHROPIC_API_KEY"
-          _ -> LLMUtils.Provider.env_key(provider_id)
-        end
-      )
+    key =
+      Application.get_env(:steward_acs, :"#{provider_id}_api_key") ||
+        System.get_env(
+          case provider_id do
+            "tokenrouter" -> "TOKENROUTER_API_KEY"
+            "anthropic" -> "ANTHROPIC_API_KEY"
+            _ -> LLMUtils.Provider.env_key(provider_id)
+          end
+        )
+
+    # ponytail: secrets pasted into secret managers often carry trailing newlines
+    # (broke every audit call in prod — 401 on all providers); trim once here.
+    case key do
+      k when is_binary(k) -> String.trim(k)
+      _ -> key
+    end
   end
 
   # ── Evaluation extraction ────────────────────────────────────────────
