@@ -49,7 +49,8 @@ defmodule Acs.MCP.Tools.FileHandlers do
          {:ok, filename} <- require_filename(args),
          {:ok, content_type} <- optional_string(args, "content_type"),
          {:ok, bytes} <- read_source(args),
-         {:ok, file} <- insert_file(org, task_id, filename, content_type, bytes) do
+         {:ok, file} <-
+           insert_file(org, task_id, filename, content_type, bytes, args["agent_id"]) do
       {:ok,
        %{
          id: file.id,
@@ -136,7 +137,7 @@ defmodule Acs.MCP.Tools.FileHandlers do
     end
   end
 
-  defp insert_file(org, task_id, filename, content_type, bytes) do
+  defp insert_file(org, task_id, filename, content_type, bytes, uploaded_by_agent) do
     safe = Path.basename(filename)
     path = Path.join(file_storage_path(), "#{Ecto.UUID.generate()}_#{safe}")
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -150,7 +151,8 @@ defmodule Acs.MCP.Tools.FileHandlers do
         size_bytes: byte_size(bytes),
         storage_path: path,
         task_id: task_id,
-        expires_at: expires_at
+        expires_at: expires_at,
+        uploaded_by_agent: uploaded_by_agent
       })
 
     case Repo.insert(changeset) do

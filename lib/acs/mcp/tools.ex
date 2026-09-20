@@ -390,6 +390,10 @@ defmodule Acs.MCP.Tools do
                   "type" => "string",
                   "description" => "Task to attach the file to"
                 },
+                "agent_id" => %{
+                  "type" => "string",
+                  "description" => "Uploading agent's identity, recorded on the file record"
+                },
                 "filename" => %{"type" => "string"},
                 "content_type" => %{"type" => "string"},
                 "base64" => %{

@@ -51,6 +51,22 @@ defmodule Acs.MCP.Tools.FileHandlersTest do
       assert delta >= 86_300 and delta <= 86_400
     end
 
+    test "records the uploading agent's id on the file" do
+      task = create_task("org-a")
+
+      assert {:ok, result} =
+               FileHandlers.manage_files(%{
+                 "_auth_org_id" => "org-a",
+                 "action" => "upload",
+                 "task_id" => task.id,
+                 "agent_id" => "worker-42",
+                 "filename" => "hello.txt",
+                 "base64" => Base.encode64("hello file")
+               })
+
+      assert Repo.get!(Acs.Acs.File, result.id).uploaded_by_agent == "worker-42"
+    end
+
     test "success via file_path copies server-local file" do
       task = create_task("org-a")
       src = tmp_path("acs_src.txt")
