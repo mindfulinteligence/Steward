@@ -328,6 +328,7 @@ ARGS_JSON='{
   "list_error_traces": {"limit": 3},
   "list_orgs": {},
   "list_plugins": {},
+  "manage_files": {"action": "list"},
   "memory_health_check": {},
   "query": {"sql": "SELECT 1", "purpose": "tool smoke"},
   "resolve_error_trace": {"trace_id": "__nonexistent__"},
