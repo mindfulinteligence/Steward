@@ -44,6 +44,7 @@ priv/acs_next_agent.txt
 # opencode Infisical machine identity (same creds as .cursor/mcp.json — never commit)
 .opencode/infisical-client-id
 .opencode/infisical-client-secret
+.opencode/steward-token
 
 # Server credentials
 serverpass.md

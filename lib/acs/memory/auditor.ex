@@ -527,7 +527,8 @@ defmodule Acs.Memory.Auditor do
         status: "approved",
         limit: 20,
         org: memory.org || Acs.Org.current(),
-        system: true
+        system: true,
+        select: [:id, :title]
       )
 
     memory_title = String.downcase(memory.title || "")
