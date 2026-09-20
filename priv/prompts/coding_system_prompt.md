@@ -27,6 +27,12 @@ Before the first file lock, identify the checkout you are actually editing:
 
 The first successful lock establishes the task and session repository so ACS knows where the agent is working. Later locks from a different repo fail with `repo_mismatch`. If the declaration is missing, ask the human; never use the Steward server checkout or invent a repository.
 
+## Concurrency Safety
+
+Multiple coding sessions may share the same checkout. Steward file locks are advisory — they do not prevent raw filesystem writes from other sessions. If you see uncommitted diffs or unfamiliar branches in the checkout, check `ps aux | grep -c claude` / `ps aux | grep -c opencode` before touching anything. When in doubt, ask the user before proceeding.
+
+For long-running or multi-file work, prefer an isolated worktree: `git worktree add ../<repo>-<short-name> -b <branch>`, do the work there, commit, and hand the branch back. This sidesteps collisions entirely.
+
 ## ⚠️ Before Work — Always Create a Task
 
 Before reading anything else or responding to the user:

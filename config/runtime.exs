@@ -91,14 +91,14 @@ config :steward_acs,
        :memory_auditor_enabled,
        System.get_env(
          "MEMORY_AUDITOR_ENABLED",
-         if(config_env() == :prod, do: "false", else: "true")
+         if(config_env() == :prod, do: "true", else: "true")
        ) in ~w(true 1 yes)
 
 config :steward_acs,
        :memory_intake_llm,
        System.get_env(
          "MEMORY_INTAKE_LLM",
-         if(config_env() == :prod, do: "false", else: "true")
+         if(config_env() == :prod, do: "true", else: "true")
        ) in ~w(true 1 yes)
 
 config :steward_acs,
@@ -431,6 +431,10 @@ config :steward_acs, :memory_store, memory_store
 
 if obsidian_path = System.get_env("OBSIDIAN_VAULT_PATH") do
   config :steward_acs, :obsidian_vault_path, obsidian_path
+end
+
+if file_storage_path = System.get_env("FILE_STORAGE_PATH") do
+  config :steward_acs, :file_storage_path, file_storage_path
 end
 
 if config_env() == :prod do

@@ -3,6 +3,7 @@ defmodule Acs.MCP.Tools do
   alias Acs.MCP.Tools.ChatSurface
   alias Acs.MCP.Tools.CoreHandlers
   alias Acs.MCP.Tools.DynamicTools
+  alias Acs.MCP.Tools.FileHandlers
   alias Acs.MCP.Tools.MemoryHandlers
   alias Acs.MCP.Tools.ErrorHandlers
   alias Acs.MCP.Tools.DiagnosticHandlers
@@ -29,6 +30,7 @@ defmodule Acs.MCP.Tools do
     "get_present_status" => "acs_core",
     "get_locked_files" => "acs_core",
     "list_tasks" => "acs_core",
+    "manage_files" => "acs_core",
     "time" => "acs_core",
     "get_logs" => "acs_core",
     "list_orgs" => "acs_core",
@@ -373,6 +375,62 @@ defmodule Acs.MCP.Tools do
         },
         []
       ),
+      %{
+        "name" => "manage_files",
+        "description" =>
+          "Upload, download, or list files. Files are org-scoped, optionally attached to a task, capped at 50MB, and expire 24 hours after upload. Actions are discriminated by the `action` argument.",
+        "inputSchema" => %{
+          "type" => "object",
+          "oneOf" => [
+            %{
+              "type" => "object",
+              "properties" => %{
+                "action" => %{"type" => "string", "enum" => ["upload"]},
+                "task_id" => %{
+                  "type" => "string",
+                  "description" => "Task to attach the file to"
+                },
+                "agent_id" => %{
+                  "type" => "string",
+                  "description" => "Uploading agent's identity, recorded on the file record"
+                },
+                "filename" => %{"type" => "string"},
+                "content_type" => %{"type" => "string"},
+                "base64" => %{
+                  "type" => "string",
+                  "description" =>
+                    "File contents as base64 (provide exactly one of base64/file_path)"
+                },
+                "file_path" => %{
+                  "type" => "string",
+                  "description" =>
+                    "Absolute server-local path to read from (provide exactly one of base64/file_path)"
+                }
+              },
+              "required" => ["action", "task_id", "filename"]
+            },
+            %{
+              "type" => "object",
+              "properties" => %{
+                "action" => %{"type" => "string", "enum" => ["download"]},
+                "file_id" => %{"type" => "string"}
+              },
+              "required" => ["action", "file_id"]
+            },
+            %{
+              "type" => "object",
+              "properties" => %{
+                "action" => %{"type" => "string", "enum" => ["list"]},
+                "task_id" => %{
+                  "type" => "string",
+                  "description" => "Optional filter: only files attached to this task"
+                }
+              },
+              "required" => ["action"]
+            }
+          ]
+        }
+      },
       tool_def(
         "get_logs",
         "Retrieve application logs with optional filtering. Supports mode='list' (default, paginated results with filtered_total and total), mode='summary' (aggregated stats by level + top components + recent errors), or mode='errors_with_context' (error entries with surrounding context from full log timeline). Use compact=true for abbreviated output.",
@@ -1238,6 +1296,7 @@ defmodule Acs.MCP.Tools do
     "get_present_status" => &CoreHandlers.acs_get_present_status/1,
     "get_locked_files" => &CoreHandlers.acs_get_locked_files/1,
     "list_tasks" => &CoreHandlers.acs_list_tasks/1,
+    "manage_files" => &FileHandlers.manage_files/1,
     "get_logs" => &CoreHandlers.get_logs/1,
     "list_orgs" => &CoreHandlers.list_orgs/1,
     "time" => &CoreHandlers.acs_time/1,

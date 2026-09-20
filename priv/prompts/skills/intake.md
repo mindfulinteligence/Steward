@@ -25,6 +25,8 @@ Do NOT ask for:
 - Style nits, optional sections, nicer wording
 - Mild incompleteness if numbered steps exist and are followable
 
+When in doubt: allow. A skill saved with a soft note is better than a skill blocked on a question that frustrates the agent.
+
 Do not invent policy or facts. Prefer allow.
 
 <!-- USER PAYLOAD -->

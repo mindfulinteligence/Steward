@@ -37,6 +37,12 @@ Workflow: [`.github/workflows/deploy.yml`](../.github/workflows/deploy.yml)
 3. Job `build-push` builds the Postgres release image and pushes `naharemete/steward_acs:<git-sha>` (+ `:multitenant`).
 4. Job `cutover` SSHs to the Environment host and runs `./scripts/deploy.sh --resume` (**blue/green**): pull idle slot → wait healthy → rewrite `caddy/acs_upstream.caddyfile` + `caddy reload` (recreate Caddy only if Caddyfile/certs changed) → stop previous slot.
 
+Each Deploy run is titled `Deploy <full commit SHA>`, so post-push verification can select the exact run without scraping job names:
+
+```bash
+gh run list --workflow deploy.yml --commit "$SHA" --json databaseId,status,conclusion,url
+```
+
 ### GitHub Environment secrets
 
 Create Environment **prod** (optional **staging**) with:

@@ -743,7 +743,7 @@ defmodule Acs.Memory.Guidance do
         - Update specs/documents alongside the work they describe
         """
 
-      title =~ ~r/feature|add|new|implement|support|integrat/i ->
+      title =~ ~r/feature|implement|integrat|scaffold|generate|setup.?new/i ->
         """
         ## Feature Context
 
@@ -784,7 +784,7 @@ defmodule Acs.Memory.Guidance do
         - Don't bake secrets into images
         """
 
-      title =~ ~r/config|configure|setup|env|setting|option/i ->
+      title =~ ~r/config|configure|setting|option|env.?var|app.?config/i ->
         """
         ## Configuration Context
 

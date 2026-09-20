@@ -28,6 +28,8 @@ Do NOT ask for:
 - Speculative sensitivity without strong evidence
 - Extra policy the candidate does not imply
 
+When in doubt: allow. A memory saved with a soft note is better than a memory blocked on a question that frustrates the agent.
+
 Do not invent policy. Do not invent facts not in the candidate. Prefer allow + soft suggestions.
 
 <!-- USER PAYLOAD -->

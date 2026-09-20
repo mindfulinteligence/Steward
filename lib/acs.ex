@@ -420,56 +420,67 @@ defmodule Acs do
             now = DateTime.utc_now()
             auto_release = DateTime.add(now, 10, :minute)
 
-            task_result =
-              if is_nil(task.repo) do
-                task |> AcsTask.changeset(%{"repo" => requested_repo}) |> Repo.update()
-              else
-                {:ok, task}
-              end
+            result =
+              Repo.transaction(fn ->
+                task_result =
+                  if is_nil(task.repo) do
+                    task |> AcsTask.changeset(%{"repo" => requested_repo}) |> Repo.update()
+                  else
+                    {:ok, task}
+                  end
 
-            with {:ok, updated_task} <- task_result,
-                 {:ok, lock} <-
-                   %FileLock{}
-                   |> FileLock.changeset(%{
-                     "file_path" => file_path,
-                     "locked_by_agent" => agent_id,
-                     "task_id" => task_id,
-                     "org" => Org.current(),
-                     "locked_at" => now,
-                     "auto_release_at" => auto_release
-                   })
-                   |> Repo.insert() do
-              Cache.put_task(updated_task.id, to_task_map(updated_task))
-              Cache.put_file_lock(file_path, to_file_lock_map(lock))
+                with {:ok, updated_task} <- task_result,
+                     {:ok, lock} <-
+                       %FileLock{}
+                       |> FileLock.changeset(%{
+                         "file_path" => file_path,
+                         "locked_by_agent" => agent_id,
+                         "task_id" => task_id,
+                         "org" => Org.current(),
+                         "locked_at" => now,
+                         "auto_release_at" => auto_release
+                       })
+                       |> Repo.insert() do
+                  {:ok, updated_task, lock}
+                end
+              end)
 
-              broadcast(:file_locked, %{
-                file_path: file_path,
-                agent_id: agent_id,
-                task_id: task_id,
-                repo: updated_task.repo
-              })
+            case result do
+              {:ok, {:ok, updated_task, lock}} ->
+                Cache.put_task(updated_task.id, to_task_map(updated_task))
+                Cache.put_file_lock(file_path, to_file_lock_map(lock))
 
-              scope_path = scope_from_file_path(file_path)
+                broadcast(:file_locked, %{
+                  file_path: file_path,
+                  agent_id: agent_id,
+                  task_id: task_id,
+                  repo: updated_task.repo
+                })
 
-              guidance =
-                if scope_path != "", do: Guidance.generate(scope_path, tier: :claim), else: %{}
+                scope_path = scope_from_file_path(file_path)
 
-              {:ok,
-               %{
-                 status: "locked",
-                 file_path: file_path,
-                 repo: updated_task.repo,
-                 guidance: guidance
-               }}
-            else
-              {:error, changeset} when is_struct(changeset, Ecto.Changeset) ->
+                guidance =
+                  if scope_path != "", do: Guidance.generate(scope_path, tier: :claim), else: %{}
+
+                {:ok,
+                 %{
+                   status: "locked",
+                   file_path: file_path,
+                   repo: updated_task.repo,
+                   guidance: guidance
+                 }}
+
+              {:ok, {:error, changeset}} when is_struct(changeset, Ecto.Changeset) ->
                 errors = inspect(changeset.errors)
 
-                if String.contains?(errors, "unique_constraint") do
+                if String.contains?(errors, "has already been taken") do
                   {:error, :already_locked}
                 else
                   {:error, "Lock failed: #{format_changeset_errors(changeset)}"}
                 end
+
+              {:ok, {:error, reason}} ->
+                {:error, reason}
 
               {:error, reason} ->
                 {:error, reason}
@@ -482,20 +493,39 @@ defmodule Acs do
   Unlocks a file.
   """
   def unlock_file(file_path, agent_id) when is_binary(file_path) and is_binary(agent_id) do
-    lock = Repo.get_by(FileLock, file_path: file_path, org: Org.current())
+    org = Org.current()
 
-    case lock do
-      nil ->
-        {:error, :not_found}
+    result =
+      Repo.transaction(fn ->
+        query =
+          from(f in FileLock,
+            where: f.file_path == ^file_path and f.org == ^org
+          )
 
-      %FileLock{locked_by_agent: locked_by} when locked_by != agent_id ->
-        {:error, :not_owner}
+        case Repo.one(query) do
+          nil ->
+            {:error, :not_found}
 
-      %FileLock{} = lock ->
-        Repo.delete(lock)
+          %FileLock{locked_by_agent: locked_by} when locked_by != agent_id ->
+            {:error, :not_owner}
+
+          %FileLock{} = lock ->
+            {:ok, _} = Repo.delete(lock)
+            :ok
+        end
+      end)
+
+    case result do
+      {:ok, :ok} ->
         Cache.delete_file_lock(file_path)
         broadcast(:file_unlocked, %{file_path: file_path})
         :ok
+
+      {:ok, {:error, _} = err} ->
+        err
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -509,15 +539,27 @@ defmodule Acs do
       {:error, :not_owner}
     else
       org = Org.current()
-      locks = Repo.all(from(f in FileLock, where: f.task_id == ^task.id and f.org == ^org))
 
-      Enum.each(locks, fn lock ->
-        Repo.delete(lock)
-        Cache.delete_file_lock(lock.file_path, org)
-      end)
+      result =
+        Repo.transaction(fn ->
+          locks = Repo.all(from(f in FileLock, where: f.task_id == ^task.id and f.org == ^org))
 
-      broadcast(:file_unlocked, %{task_id: task.id})
-      :ok
+          Enum.each(locks, fn lock ->
+            {:ok, _} = Repo.delete(lock)
+          end)
+
+          locks
+        end)
+
+      case result do
+        {:ok, locks} ->
+          Enum.each(locks, fn lock -> Cache.delete_file_lock(lock.file_path, org) end)
+          broadcast(:file_unlocked, %{task_id: task.id})
+          :ok
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

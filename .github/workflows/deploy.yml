@@ -1,4 +1,5 @@
 name: Deploy
+run-name: Deploy ${{ github.sha }}
 
 # Build + push the release image, then cut over one or more target hosts via scripts/deploy.sh.
 # Cutover is gated on CI (test + release compile + credo) unless skip_ci on dispatch.

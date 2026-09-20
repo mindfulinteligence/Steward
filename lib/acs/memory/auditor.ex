@@ -22,6 +22,7 @@ defmodule Acs.Memory.Auditor do
   """
 
   use GenServer
+  import Ecto.Query
   require Logger
 
   alias Acs.LLM
@@ -203,15 +204,15 @@ defmodule Acs.Memory.Auditor do
     cooling_off_threshold = DateTime.utc_now() |> DateTime.add(-@cooling_off_seconds, :second)
 
     memories =
-      Indexer.list_memories(
-        status: "proposed",
-        order_by: [asc: :created_at],
-        limit: 200,
-        org: :all,
-        system: true
+      from(m in Schema,
+        where: m.status == "proposed",
+        where: m.kind in ^auditable_kinds(),
+        where: is_nil(m.parse_error) or m.parse_error == "",
+        where: m.created_at < ^cooling_off_threshold,
+        order_by: [asc: m.created_at],
+        limit: 200
       )
-      |> Enum.reject(fn m -> !(m.kind in auditable_kinds()) end)
-      |> Enum.reject(fn m -> m.parse_error && m.parse_error != "" end)
+      |> Repo.all()
 
     {memories, skipped} =
       Enum.reduce(memories, {[], %{}}, fn memory, {auditable, skipped} ->
@@ -221,17 +222,7 @@ defmodule Acs.Memory.Auditor do
         end
       end)
 
-    memories =
-      memories
-      |> Enum.reverse()
-      |> Enum.filter(fn m ->
-        case m.created_at do
-          nil -> false
-          dt -> DateTime.compare(coerce_datetime(dt), cooling_off_threshold) == :lt
-        end
-      end)
-
-    {memories, skipped}
+    {Enum.reverse(memories), skipped}
   end
 
   # Proposed rows with a settled verdict are already handled and must not be
@@ -262,12 +253,6 @@ defmodule Acs.Memory.Auditor do
       true ->
         nil
     end
-  end
-
-  defp coerce_datetime(%DateTime{} = dt), do: dt
-
-  defp coerce_datetime(%NaiveDateTime{} = ndt) do
-    DateTime.from_naive!(ndt, "Etc/UTC")
   end
 
   # Audits a single memory with retry logic
@@ -302,10 +287,10 @@ defmodule Acs.Memory.Auditor do
 
           :transient_exhausted ->
             # All providers already failed this attempt — don't sleep×N. Leave proposed
-            # for the next audit cycle once mimo/nim recovers.
-            Logger.warning(
-              "[Acs.Memory.Auditor] All providers failed for #{memory_id}; deferring to next cycle"
-            )
+            # for the next audit cycle once mimo/nim recovers. Record the deferral so a
+            # long provider outage becomes visible; escalate to human_review after
+            # @max_deferrals failed cycles instead of sticking silently forever.
+            record_deferral(memory_id, inspect(reason))
 
             :ok
 
@@ -865,6 +850,66 @@ defmodule Acs.Memory.Auditor do
       end
     else
       :ok
+    end
+  end
+
+  @max_deferrals 50
+
+  # Records a transient all-providers-failed deferral on the memory. Stays proposed so
+  # the next cycle retries, but after @max_deferrals consecutive deferrals (~a long
+  # provider outage) it moves to human_review instead of sticking invisibly forever.
+  defp record_deferral(memory_id, reason) do
+    import Ecto.Query
+    alias Acs.Memory.Schema
+    alias Acs.Repo
+
+    case Repo.get(Schema, memory_id) do
+      nil ->
+        {:error, "Memory not found"}
+
+      memory ->
+        existing_flags = decode_auditor_flags(memory.auditor_flags)
+        defer_count = Map.get(existing_flags, "audit_defer_count", 0) + 1
+
+        updated_flags =
+          existing_flags
+          |> Map.merge(%{
+            "audit_defer_count" => defer_count,
+            "last_defer_reason" => reason,
+            "last_defer_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+          })
+
+        flags_json = Jason.encode!(updated_flags)
+
+        if defer_count >= @max_deferrals do
+          Logger.warning(
+            "[Acs.Memory.Auditor] Memory #{memory_id} deferred #{defer_count} cycles (providers down); escalating to human_review"
+          )
+
+          updated_flags =
+            Map.merge(updated_flags, %{
+              "needs_human_review" => true,
+              "flagged_reason" =>
+                "Deferred #{@max_deferrals}+ audit cycles: LLM providers unavailable (#{reason})"
+            })
+
+          public_id = Indexer.public_id(memory.id, memory.org)
+
+          Acs.Memory.Store.transition(public_id, "human_review",
+            org: memory.org,
+            auditor_flags: updated_flags
+          )
+        else
+          Repo.update_all(
+            from(m in Schema, where: m.id == ^memory_id),
+            set: [
+              auditor_flags: flags_json,
+              updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
+            ]
+          )
+        end
+
+        :ok
     end
   end
 
