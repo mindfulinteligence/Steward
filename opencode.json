@@ -32,6 +32,14 @@
         "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID": "{file:.opencode/infisical-client-id}",
         "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET": "{file:.opencode/infisical-client-secret}"
       }
+    },
+    "steward": {
+      "type": "remote",
+      "url": "https://anantha.stewardacs.xyz/mcp/sse",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {file:.opencode/steward-token}"
+      }
     }
   }
 }

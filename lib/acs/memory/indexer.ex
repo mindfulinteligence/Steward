@@ -387,6 +387,16 @@ defmodule Acs.Memory.Indexer do
     query = if opts[:limit], do: from(m in query, limit: ^opts[:limit]), else: query
     query = build_abac_filter(query, opts)
 
+    # Pass `select: [:id, :title, ...]` to fetch only the columns a caller
+    # actually reads — avoids pulling content/summary/the *_json blob columns
+    # over the wire for hot paths that only need a couple of fields.
+    query =
+      if opts[:select] do
+        from(m in query, select: struct(m, ^opts[:select]))
+      else
+        query
+      end
+
     Repo.all(query)
   end
 
