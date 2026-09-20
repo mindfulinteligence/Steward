@@ -433,6 +433,10 @@ if obsidian_path = System.get_env("OBSIDIAN_VAULT_PATH") do
   config :steward_acs, :obsidian_vault_path, obsidian_path
 end
 
+if file_storage_path = System.get_env("FILE_STORAGE_PATH") do
+  config :steward_acs, :file_storage_path, file_storage_path
+end
+
 if config_env() == :prod do
   host =
     case System.get_env("PHX_HOST") do

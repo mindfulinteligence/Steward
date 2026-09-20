@@ -97,14 +97,16 @@ defmodule Acs.Application do
             [
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
-              Acs.Skills.Auditor | children
+              Acs.Skills.Auditor,
+              Acs.Files.Reaper | children
             ]
           else
             [
               Acs.Specs.FileWatcher,
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
-              Acs.Skills.Auditor | children
+              Acs.Skills.Auditor,
+              Acs.Files.Reaper | children
             ]
           end ++ tools_watcher_children
       else
