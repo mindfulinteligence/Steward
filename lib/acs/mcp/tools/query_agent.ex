@@ -114,23 +114,16 @@ defmodule Acs.MCP.Tools.QueryAgent do
       |> Keyword.merge(limit: limit)
       |> maybe_put(:kind, kind)
       |> Keyword.put(:status, status)
+      |> maybe_put(:team, team)
+      |> maybe_put(:project, project)
 
-    case {query, team, project} do
-      {q, nil, nil} when is_binary(q) and q != "" ->
-        mems = Acs.Memory.Search.search(q, opts)
-        {:memory_results, mems}
+    mems =
+      case query do
+        q when is_binary(q) and q != "" -> Acs.Memory.Search.search(q, opts)
+        _ -> Acs.Memory.Search.list(opts)
+      end
 
-      {nil, nil, nil} ->
-        mems = Acs.Memory.Search.list(opts)
-        {:memory_results, mems}
-
-      _ ->
-        list_opts = opts
-        list_opts = if team, do: Keyword.put(list_opts, :team, team), else: list_opts
-        list_opts = if project, do: Keyword.put(list_opts, :project, project), else: list_opts
-        mems = Acs.Memory.Indexer.list_memories(list_opts)
-        {:memory_results, mems}
-    end
+    {:memory_results, mems}
   end
 
   defp search_documents(args, search_opts, limit) do

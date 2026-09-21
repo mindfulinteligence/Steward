@@ -145,6 +145,7 @@ defmodule Acs.Memory.Search do
             |> Enum.map(fn id -> Map.get(memories_map, id) end)
             |> Enum.reject(&is_nil/1)
             |> apply_status_filter(opts)
+            |> apply_team_project_filter(opts)
           end
 
         {:error, _reason} ->
@@ -176,6 +177,7 @@ defmodule Acs.Memory.Search do
               |> Enum.map(fn id -> Map.get(memories_map, id) end)
               |> Enum.reject(&is_nil/1)
               |> apply_status_filter(opts)
+              |> apply_team_project_filter(opts)
 
             {memories, Map.take(scores_map, Enum.map(memories, & &1.id))}
           end
@@ -211,6 +213,20 @@ defmodule Acs.Memory.Search do
       _ ->
         memories
     end
+  end
+
+  # Vector search has no team/project concept, so results fetched by id must
+  # be hard-filtered here rather than relying on the (lexical-only) DB query.
+  defp apply_team_project_filter(memories, opts) do
+    memories
+    |> filter_by_field(:team, Keyword.get(opts, :team))
+    |> filter_by_field(:project, Keyword.get(opts, :project))
+  end
+
+  defp filter_by_field(memories, _field, nil), do: memories
+
+  defp filter_by_field(memories, field, value) do
+    Enum.filter(memories, &(Map.get(&1, field) == value))
   end
 
   defp tenant_similar(embedding, opts, limit) do
