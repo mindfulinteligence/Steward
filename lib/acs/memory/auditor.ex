@@ -152,7 +152,7 @@ defmodule Acs.Memory.Auditor do
 
   # Main audit cycle logic
   defp do_audit_cycle do
-    Logger.info("[Acs.Memory.Auditor] Starting audit cycle")
+    Logger.debug("[Acs.Memory.Auditor] Starting audit cycle")
     start_time = DateTime.utc_now()
 
     {proposed_memories, skipped} = fetch_auditable_memories()
@@ -162,7 +162,9 @@ defmodule Acs.Memory.Auditor do
       |> Enum.frequencies_by(& &1.org)
       |> Enum.map_join(", ", fn {org, n} -> "#{org}=#{n}" end)
 
-    Logger.info(
+    log_fn = if proposed_memories == [], do: &Logger.debug/1, else: &Logger.info/1
+
+    log_fn.(
       "[Acs.Memory.Auditor] Found #{length(proposed_memories)} memories to audit (concurrency: #{audit_max_concurrency()}) orgs=[#{by_org}]"
     )
 
@@ -193,7 +195,7 @@ defmodule Acs.Memory.Auditor do
 
     end_time = DateTime.utc_now()
     duration = DateTime.diff(end_time, start_time, :millisecond)
-    Logger.info("[Acs.Memory.Auditor] Audit cycle completed in #{duration}ms")
+    log_fn.("[Acs.Memory.Auditor] Audit cycle completed in #{duration}ms")
   end
 
   # Fetches proposed memories that have passed cooling-off and are not parse_error.

@@ -136,7 +136,8 @@ defmodule Acs.Specs.Auditor do
   def audit_all(audited \\ MapSet.new()) do
     candidates = fetch_auditable(audited)
 
-    Logger.info("[Acs.Specs.Auditor] Auditing #{length(candidates)} specs/documents")
+    log_fn = if candidates == [], do: &Logger.debug/1, else: &Logger.info/1
+    log_fn.("[Acs.Specs.Auditor] Auditing #{length(candidates)} specs/documents")
 
     max_conc = Application.get_env(:steward_acs, :spec_auditor_max_concurrency, 5)
 
@@ -161,7 +162,7 @@ defmodule Acs.Specs.Auditor do
     rejected = Enum.count(results, &(&1[:audit_verdict] == "reject" or &1[:status] == "rejected"))
     review = Enum.count(results, &(&1[:audit_verdict] == "human_review"))
 
-    Logger.info(
+    log_fn.(
       "[Acs.Specs.Auditor] Audit complete: approved=#{approved} rejected=#{rejected} human_review=#{review}"
     )
 

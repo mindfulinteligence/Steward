@@ -40,6 +40,9 @@ defmodule Acs.Files.Reaper do
   def handle_info(:sweep, state) do
     try do
       reap_expired()
+    rescue
+      error ->
+        Logger.warning("[Acs.Files.Reaper] Sweep failed, will retry next cycle: #{Exception.message(error)}")
     after
       schedule_sweep(sweep_interval())
     end
