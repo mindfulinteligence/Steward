@@ -120,6 +120,13 @@ defmodule Acs.Application do
     children = [{Phoenix.PubSub, name: AcsWeb.PubSub} | children]
 
     opts = [strategy: :one_for_one, name: Acs.Supervisor]
+
+    _ =
+      :logger.add_primary_filter(
+        :neon_idle_disconnect,
+        {&Acs.Observability.LogFilters.neon_idle_disconnect/2, []}
+      )
+
     {:ok, pid} = Supervisor.start_link(children, opts)
 
     # Initial sync: populate SQLite index from YAML files on boot.
