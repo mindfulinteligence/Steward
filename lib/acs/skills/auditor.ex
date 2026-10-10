@@ -127,11 +127,11 @@ defmodule Acs.Skills.Auditor do
   end
 
   defp schedule_audit do
-    Process.send_after(self(), :audit, audit_interval())
+    Acs.IdleTracker.schedule_tick(:audit, audit_interval())
   end
 
   defp schedule_audit(interval) do
-    Process.send_after(self(), :audit, interval)
+    Acs.IdleTracker.schedule_tick(:audit, interval)
   end
 
   @doc """

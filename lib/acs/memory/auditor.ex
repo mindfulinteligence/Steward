@@ -147,7 +147,7 @@ defmodule Acs.Memory.Auditor do
 
   # Schedules the next audit cycle
   defp schedule_audit(interval) do
-    Process.send_after(self(), :audit, interval)
+    Acs.IdleTracker.schedule_tick(:audit, interval)
   end
 
   # Main audit cycle logic
