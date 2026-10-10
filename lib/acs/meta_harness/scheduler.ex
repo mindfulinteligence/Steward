@@ -36,25 +36,21 @@ defmodule Acs.MetaHarness.Scheduler do
     Acs.IdleTracker.subscribe()
 
     # Run once at boot so deploy/restart isn't blind for a full interval.
-    Process.send_after(self(), :run_analysis, 0)
-    schedule_next_run(interval)
-
-    {:ok, %{interval: interval, last_run: nil}}
+    # The boot-time run reschedules itself, so no separate timer is needed here.
+    {:ok, schedule_next_run(%{interval: interval, last_run: nil, timer: nil}, 0)}
   end
 
   @impl true
   def handle_info(:activity, state) do
     Logger.debug("[Acs.MetaHarness.Scheduler] Activity detected, waking to fast cadence")
-    schedule_next_run(state.interval)
-    {:noreply, state}
+    {:noreply, schedule_next_run(state, state.interval)}
   end
 
   @impl true
   def handle_info(:run_analysis, state) do
     if Acs.IdleTracker.idle?() do
       Logger.debug("[Acs.MetaHarness.Scheduler] Idle, sleeping")
-      schedule_next_run(Acs.IdleTracker.sleep_interval_ms())
-      {:noreply, state}
+      {:noreply, schedule_next_run(state, Acs.IdleTracker.sleep_interval_ms())}
     else
       {state, _result} = run_cycle(state)
       {:noreply, state}
@@ -93,13 +89,17 @@ defmodule Acs.MetaHarness.Scheduler do
       end
 
     # Always reschedule next run even on error - GenServer must stay alive
-    schedule_next_run(state.interval)
+    state = schedule_next_run(state, state.interval)
 
     {%{state | last_run: DateTime.utc_now()}, result}
   end
 
-  defp schedule_next_run(interval) do
-    Process.send_after(self(), :run_analysis, interval)
+  # Exactly one pending tick at a time: cancel the old timer before arming a
+  # new one. Without this, every :activity wake-up and every tick added a
+  # fresh self-perpetuating chain (~60 cycles/hour observed instead of 1).
+  defp schedule_next_run(state, interval) do
+    if state.timer, do: Process.cancel_timer(state.timer)
+    %{state | timer: Process.send_after(self(), :run_analysis, interval)}
   end
 
   defp run_analysis_cycle do
