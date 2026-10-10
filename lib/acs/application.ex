@@ -98,7 +98,8 @@ defmodule Acs.Application do
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
               Acs.Skills.Auditor,
-              Acs.Files.Reaper | children
+              Acs.Files.Reaper,
+              Acs.Memory.EmbeddingBackfill | children
             ]
           else
             [
@@ -106,7 +107,8 @@ defmodule Acs.Application do
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
               Acs.Skills.Auditor,
-              Acs.Files.Reaper | children
+              Acs.Files.Reaper,
+              Acs.Memory.EmbeddingBackfill | children
             ]
           end ++ tools_watcher_children
       else
@@ -149,6 +151,7 @@ defmodule Acs.Application do
 
             {:error, reason} ->
               Logger.warning("[Application] Embedding generation skipped: #{reason}")
+              Acs.Memory.EmbeddingBackfill.note_failure()
           end
         else
           Logger.info(
@@ -169,6 +172,7 @@ defmodule Acs.Application do
 
           {:error, reason} ->
             Logger.warning("[Application] Skill embeddings skipped: #{reason}")
+            Acs.Memory.EmbeddingBackfill.note_failure()
         end
       end)
 
@@ -184,6 +188,7 @@ defmodule Acs.Application do
 
           {:error, reason} ->
             Logger.warning("[Application] Spec embeddings skipped: #{reason}")
+            Acs.Memory.EmbeddingBackfill.note_failure()
         end
       end)
 
