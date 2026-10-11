@@ -109,4 +109,36 @@ defmodule Acs.Specs.AuditorTest do
     assert loaded.status == "proposed"
     assert loaded.audit_verdict == "human_review"
   end
+
+  test "audit_all fails fast on a legacy entry missing purpose instead of retrying", %{tmp: tmp} do
+    entry =
+      Entry.from_map(%{
+        "app" => "docs",
+        "id" => "legacy/no-purpose",
+        "status" => "proposed",
+        "title" => "Legacy spec without a purpose",
+        "purpose" => "Explains why the legacy module exists and who depends on it today.",
+        "invariants" => ["Callers always pass a binary id value"],
+        "workflows" => ["Load the entry, then audit it once per cycle"],
+        "failure_modes" => ["A missing id raises an ArgumentError"],
+        "created_at" => "2020-01-01T00:00:00Z"
+      })
+
+    assert :ok = Loader.save(entry)
+
+    # Simulate a pre-validation file by stripping the purpose from disk.
+    [file] = Path.wildcard(Path.join(tmp, "**/no-purpose.yaml"))
+    stripped = file |> File.read!() |> String.replace(~r/^purpose:.*\n/m, "")
+    refute stripped == File.read!(file)
+    File.write!(file, stripped)
+
+    {{micros, {results, _}}, log} =
+      ExUnit.CaptureLog.with_log(fn -> :timer.tc(fn -> Auditor.audit_all() end) end)
+
+    # First backoff delay is 2s; a retry would blow well past this.
+    assert micros < 1_500_000
+    assert Enum.any?(results, &(&1[:id] == "legacy/no-purpose" and &1[:audit_verdict] == "error"))
+    assert log =~ "Skipping docs/legacy/no-purpose"
+    refute log =~ "Retrying"
+  end
 end
