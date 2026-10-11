@@ -35,3 +35,7 @@ config :steward_acs, AcsWeb.Endpoint,
 config :steward_acs, Acs.Mailer, adapter: Swoosh.Adapters.Test
 config :steward_acs, :email_delivery_enabled, false
 config :steward_acs, :resend_from_email, {"Steward ACS", "noreply@example.test"}
+
+# Fixtures insert orgs directly (no Orgs.create → no invalidation); a cached
+# miss from an earlier test would hide them.
+config :steward_acs, :org_subdomain_cache, false

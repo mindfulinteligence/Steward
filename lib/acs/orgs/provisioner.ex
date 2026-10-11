@@ -39,8 +39,12 @@ defmodule Acs.Orgs.Provisioner do
 
   defp update(organization, attrs) do
     case organization |> Organization.provisioning_changeset(attrs) |> Repo.update() do
-      {:ok, updated} -> {:ok, updated}
-      {:error, changeset} -> {:error, changeset}
+      {:ok, updated} ->
+        Acs.OrgsCache.invalidate()
+        {:ok, updated}
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
   end
 

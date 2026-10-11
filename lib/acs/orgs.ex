@@ -38,8 +38,13 @@ defmodule Acs.Orgs do
   def get_by_subdomain(subdomain) when is_binary(subdomain) do
     subdomain = normalize_subdomain(subdomain)
 
-    Repo.get_by(Organization, subdomain: subdomain) ||
-      legacy_org_by_subdomain(subdomain)
+    # Not a valid DNS label → cannot be an org; skip the DB (scanner junk).
+    if Regex.match?(~r/\A[a-z0-9][a-z0-9-]{0,62}\z/, subdomain) do
+      Acs.OrgsCache.fetch_subdomain(subdomain, fn ->
+        Repo.get_by(Organization, subdomain: subdomain) ||
+          legacy_org_by_subdomain(subdomain)
+      end)
+    end
   end
 
   def resolve_subdomain(subdomain) do

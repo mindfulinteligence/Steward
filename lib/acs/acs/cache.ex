@@ -86,24 +86,37 @@ defmodule Acs.Acs.Cache do
         end
       end)
 
-    if stale != [] do
-      Repo.transaction(fn ->
-        Enum.each(stale, fn s ->
-          :ets.delete(@agent_status_table, {s.org, s.agent_id})
+    # ETS is cleaned immediately (in-memory, free). The DB delete is deferred
+    # while idle: agents go stale just as activity stops, and deleting then
+    # would wake an autosuspended Neon compute on every quiet period.
+    Enum.each(stale, fn s -> :ets.delete(@agent_status_table, {s.org, s.agent_id}) end)
 
-          Repo.delete_all(
-            from(t in Acs.Acs.AgentStatus,
-              where: t.agent_id == ^s.agent_id and t.org == ^s.org
-            )
-          )
-        end)
+    pending = Map.get(state, :pending_db_deletes, []) ++ Enum.map(stale, &{&1.org, &1.agent_id})
 
-        Logger.info("[Acs.Cache] Sweep: removed #{length(stale)} stale agents")
-      end)
-    end
+    pending =
+      if pending != [] and not Acs.IdleTracker.idle?() do
+        delete_agent_rows(pending)
+        []
+      else
+        pending
+      end
 
     schedule_sweep()
-    {:noreply, state}
+    {:noreply, Map.put(state, :pending_db_deletes, pending)}
+  end
+
+  defp delete_agent_rows(pending) do
+    Repo.transaction(fn ->
+      Enum.each(pending, fn {org, agent_id} ->
+        Repo.delete_all(
+          from(t in Acs.Acs.AgentStatus, where: t.agent_id == ^agent_id and t.org == ^org)
+        )
+      end)
+
+      Logger.info("[Acs.Cache] Sweep: removed #{length(pending)} stale agents")
+    end)
+  rescue
+    e -> Logger.warning("[Acs.Cache] Stale agent DB cleanup failed: #{Exception.message(e)}")
   end
 
   defp schedule_sweep do
