@@ -57,15 +57,15 @@ defmodule Acs.Acs.Sweeper do
   end
 
   defp schedule_sweep do
-    Process.send_after(self(), :sweep, @sweep_interval)
+    Acs.IdleTracker.schedule_tick(:sweep, @sweep_interval)
   end
 
   defp schedule_sweep_sleep do
-    Process.send_after(self(), :sweep, Acs.IdleTracker.sleep_interval_ms())
+    Acs.IdleTracker.schedule_tick(:sweep, Acs.IdleTracker.sleep_interval_ms())
   end
 
   defp do_sweep do
-    Logger.info("[Acs.Sweeper] Running sweep")
+    Logger.debug("[Acs.Sweeper] Running sweep")
 
     now = DateTime.utc_now()
 
@@ -97,7 +97,10 @@ defmodule Acs.Acs.Sweeper do
       Acs.broadcast(:file_unlocked, %{file_path: lock.file_path})
     end)
 
-    Logger.info(
+    log_fn =
+      if expired_tasks == [] and expired_files == [], do: &Logger.debug/1, else: &Logger.info/1
+
+    log_fn.(
       "[Acs.Sweeper] Sweep complete: #{length(expired_tasks)} tasks, #{length(expired_files)} file locks released"
     )
   end

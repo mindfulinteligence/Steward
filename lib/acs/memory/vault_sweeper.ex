@@ -33,8 +33,14 @@ defmodule Acs.Memory.VaultSweeper do
 
   @impl true
   def handle_info(:sweep, state) do
-    do_sweep()
-    schedule_sweep()
+    # Listing orgs is a DB query; nothing to sync while nobody is active.
+    if Acs.IdleTracker.idle?() do
+      schedule_sweep(Acs.IdleTracker.sleep_interval_ms())
+    else
+      do_sweep()
+      schedule_sweep()
+    end
+
     {:noreply, state}
   end
 
@@ -49,8 +55,8 @@ defmodule Acs.Memory.VaultSweeper do
       Application.get_env(:steward_acs, :start_background_workers, true)
   end
 
-  defp schedule_sweep do
-    if sweep_enabled?(), do: Process.send_after(self(), :sweep, @interval_ms)
+  defp schedule_sweep(interval \\ @interval_ms) do
+    if sweep_enabled?(), do: Process.send_after(self(), :sweep, interval)
   end
 
   defp do_sweep do

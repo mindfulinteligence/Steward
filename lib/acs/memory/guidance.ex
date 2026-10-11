@@ -435,7 +435,11 @@ defmodule Acs.Memory.Guidance do
       relevant_skills: [],
       relevant_specs: [],
       hint:
-        "Protocols are in get_started. Load relevant_skills / relevant_specs, then work → save → release_work → submit_task_feedback."
+        "Task claimed — you do not yet hold any file locks. Before editing, call lock_file for each " <>
+          "file (first lock of this task must include repo: \"<name>\" and repo_confirmed: true, " <>
+          "from this checkout's AGENTS_STEWARD.md `Repo:` value) and only edit after lock_file returns ok. " <>
+          "Full protocols are in get_started if you need them again. Then: load relevant_skills / " <>
+          "relevant_specs → lock_file → work → unlock_file → save → release_work → submit_task_feedback."
     }
   end
 

@@ -98,7 +98,8 @@ defmodule Acs.Application do
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
               Acs.Skills.Auditor,
-              Acs.Files.Reaper | children
+              Acs.Files.Reaper,
+              Acs.Memory.EmbeddingBackfill | children
             ]
           else
             [
@@ -106,7 +107,8 @@ defmodule Acs.Application do
               Acs.Specs.Auditor,
               {Acs.Log.RetentionSweeper, []},
               Acs.Skills.Auditor,
-              Acs.Files.Reaper | children
+              Acs.Files.Reaper,
+              Acs.Memory.EmbeddingBackfill | children
             ]
           end ++ tools_watcher_children
       else
@@ -118,6 +120,13 @@ defmodule Acs.Application do
     children = [{Phoenix.PubSub, name: AcsWeb.PubSub} | children]
 
     opts = [strategy: :one_for_one, name: Acs.Supervisor]
+
+    _ =
+      :logger.add_primary_filter(
+        :neon_idle_disconnect,
+        {&Acs.Observability.LogFilters.neon_idle_disconnect/2, []}
+      )
+
     {:ok, pid} = Supervisor.start_link(children, opts)
 
     # Initial sync: populate SQLite index from YAML files on boot.
@@ -149,6 +158,7 @@ defmodule Acs.Application do
 
             {:error, reason} ->
               Logger.warning("[Application] Embedding generation skipped: #{reason}")
+              Acs.Memory.EmbeddingBackfill.note_failure()
           end
         else
           Logger.info(
@@ -169,6 +179,7 @@ defmodule Acs.Application do
 
           {:error, reason} ->
             Logger.warning("[Application] Skill embeddings skipped: #{reason}")
+            Acs.Memory.EmbeddingBackfill.note_failure()
         end
       end)
 
@@ -184,6 +195,7 @@ defmodule Acs.Application do
 
           {:error, reason} ->
             Logger.warning("[Application] Spec embeddings skipped: #{reason}")
+            Acs.Memory.EmbeddingBackfill.note_failure()
         end
       end)
 

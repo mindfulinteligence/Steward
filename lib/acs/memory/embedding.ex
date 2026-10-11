@@ -129,6 +129,7 @@ defmodule Acs.Memory.Embedding do
 
     latency_ms = System.monotonic_time(:millisecond) - started
     log_embedding_call(result, model_name, latency_ms, prompt_chars)
+    if match?({:error, _}, result), do: Acs.Memory.EmbeddingBackfill.note_failure()
     result
   rescue
     e ->
@@ -289,6 +290,7 @@ defmodule Acs.Memory.Embedding do
 
     latency_ms = System.monotonic_time(:millisecond) - started
     log_embedding_call(result, model_name, latency_ms, prompt_chars)
+    if match?({:error, _}, result), do: Acs.Memory.EmbeddingBackfill.note_failure()
     result
   rescue
     e ->

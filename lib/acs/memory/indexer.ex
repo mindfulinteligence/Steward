@@ -384,6 +384,8 @@ defmodule Acs.Memory.Indexer do
 
     query = apply_scope_path_filter(query, opts[:scope_path])
     query = apply_repo_filter(query, opts)
+    query = apply_team_filter(query, opts[:team])
+    query = apply_project_filter(query, opts[:project])
     query = if opts[:limit], do: from(m in query, limit: ^opts[:limit]), else: query
     query = build_abac_filter(query, opts)
 
@@ -481,6 +483,8 @@ defmodule Acs.Memory.Indexer do
 
     search_query = apply_scope_path_filter(search_query, opts[:scope_path])
     search_query = apply_repo_filter(search_query, opts)
+    search_query = apply_team_filter(search_query, opts[:team])
+    search_query = apply_project_filter(search_query, opts[:project])
     search_query = apply_audience_order(search_query, opts[:audience])
 
     search_query =
@@ -621,6 +625,20 @@ defmodule Acs.Memory.Indexer do
     else
       from m in query, where: like(m.scope_path, ^"#{scope_path}%")
     end
+  end
+
+  defp apply_team_filter(query, nil), do: query
+
+  defp apply_team_filter(query, team) when is_binary(team) do
+    import Ecto.Query
+    from(m in query, where: m.team == ^team)
+  end
+
+  defp apply_project_filter(query, nil), do: query
+
+  defp apply_project_filter(query, project) when is_binary(project) do
+    import Ecto.Query
+    from(m in query, where: m.project == ^project)
   end
 
   defp apply_audience_order(query, nil), do: query

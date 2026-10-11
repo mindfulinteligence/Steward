@@ -127,11 +127,11 @@ defmodule Acs.Skills.Auditor do
   end
 
   defp schedule_audit do
-    Process.send_after(self(), :audit, audit_interval())
+    Acs.IdleTracker.schedule_tick(:audit, audit_interval())
   end
 
   defp schedule_audit(interval) do
-    Process.send_after(self(), :audit, interval)
+    Acs.IdleTracker.schedule_tick(:audit, interval)
   end
 
   @doc """
@@ -159,7 +159,8 @@ defmodule Acs.Skills.Auditor do
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq_by(& &1.name)
 
-      Logger.info("[Acs.Skills.Auditor] Auditing #{length(candidates)} skills for #{org}")
+      log_fn = if candidates == [], do: &Logger.debug/1, else: &Logger.info/1
+      log_fn.("[Acs.Skills.Auditor] Auditing #{length(candidates)} skills for #{org}")
 
       max_conc = Application.get_env(:steward_acs, :skill_auditor_max_concurrency, 5)
 
@@ -180,7 +181,7 @@ defmodule Acs.Skills.Auditor do
       needs = Enum.count(results, fn r -> r.audit_status == "needs_improvement" end)
       failing = Enum.count(results, fn r -> r.audit_status == "failing" end)
 
-      Logger.info(
+      log_fn.(
         "[Acs.Skills.Auditor] Audit complete: #{ok} ok, #{needs} needs_improvement, #{failing} failing"
       )
 

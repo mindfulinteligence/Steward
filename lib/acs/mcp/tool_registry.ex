@@ -862,7 +862,11 @@ defmodule Acs.MCP.ToolRegistry do
     fun.()
   rescue
     error ->
-      Logger.error("ToolRegistry tool crash: #{Exception.message(error)}")
+      Logger.error(
+        "ToolRegistry tool crash: " <>
+          Exception.format(:error, error, __STACKTRACE__)
+      )
+
       {:error, "Tool execution failed"}
   catch
     :exit, reason ->

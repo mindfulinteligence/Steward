@@ -38,10 +38,22 @@ defmodule Acs.Files.Reaper do
 
   @impl true
   def handle_info(:sweep, state) do
-    try do
-      reap_expired()
-    after
-      schedule_sweep(sweep_interval())
+    # Expired files are already invisible to manage_files, so reaping can wait
+    # until someone is active — an idle sweep would wake an autosuspended DB.
+    if Acs.IdleTracker.idle?() do
+      Logger.debug("[Acs.Files.Reaper] Idle, skipping sweep")
+      schedule_sweep(Acs.IdleTracker.sleep_interval_ms())
+    else
+      try do
+        reap_expired()
+      rescue
+        error ->
+          Logger.warning(
+            "[Acs.Files.Reaper] Sweep failed, will retry next cycle: #{Exception.message(error)}"
+          )
+      after
+        schedule_sweep(sweep_interval())
+      end
     end
 
     {:noreply, state}

@@ -135,7 +135,7 @@ defmodule Acs.MCP.Tools do
       ),
       tool_def(
         "release_work",
-        "Release a task lock. Save skills/memories/specs (or documents) BEFORE calling this, then submit_task_feedback last to formally close. Do not tell the user you're done until feedback is submitted.",
+        "Release a task lock. Save skills/memories/specs (or documents) before calling this, then call submit_task_feedback to formally close the task. Prefer close_work, which does all of this in one call.",
         %{
           "agent_id" => %{"type" => "string", "description" => "Your team member name."},
           "task_id" => %{

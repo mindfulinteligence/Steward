@@ -63,8 +63,8 @@ defmodule Acs.Memory.HybridSearch do
     # Callers (Search.find_relevant, MCP) pass :scope_path; accept both.
     scope = Keyword.get(opts, :scope) || Keyword.get(opts, :scope_path)
     audience = Keyword.get(opts, :audience)
-    team_filter = Keyword.get(opts, :team_filter)
-    project_filter = Keyword.get(opts, :project_filter)
+    team_filter = Keyword.get(opts, :team)
+    project_filter = Keyword.get(opts, :project)
     org = Keyword.get(opts, :org) || Acs.Org.current()
     current_repo = opts[:current_repo]
     repo = opts[:repo]
@@ -377,8 +377,8 @@ defmodule Acs.Memory.HybridSearch do
   end
 
   defp compute_team_project_bonus(memory, opts) do
-    team_filter = Keyword.get(opts, :team_filter)
-    project_filter = Keyword.get(opts, :project_filter)
+    team_filter = Keyword.get(opts, :team)
+    project_filter = Keyword.get(opts, :project)
 
     cond do
       team_filter && memory.team == team_filter -> 0.05

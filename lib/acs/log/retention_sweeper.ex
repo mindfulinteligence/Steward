@@ -83,7 +83,7 @@ defmodule Acs.Log.RetentionSweeper do
   end
 
   defp schedule(interval) do
-    Process.send_after(self(), :tick, interval)
+    Acs.IdleTracker.schedule_tick(:tick, interval)
   end
 
   defp config(key, default) do

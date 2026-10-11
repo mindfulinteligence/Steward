@@ -6,6 +6,10 @@
       "env": {
         "AUTHORIZATION": "Bearer acs_dev_c25751eddd729dd377fed2cfea61c340ce2145b6a0465162538d7d3ae83b20b6"
       }
+    },
+    "axiom": {
+      "type": "http",
+      "url": "https://mcp.axiom.co/mcp"
     }
   }
 }

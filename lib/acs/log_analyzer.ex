@@ -22,6 +22,7 @@ defmodule Acs.LogAnalyzer do
   def init(_opts) do
     Logger.info("[LogAnalyzer] Starting periodic error analysis (interval: 60s)")
 
+    Acs.IdleTracker.subscribe()
     schedule_analysis()
 
     {:ok,
@@ -37,15 +38,27 @@ defmodule Acs.LogAnalyzer do
 
   @impl true
   def handle_info(:run_analysis, state) do
-    new_state = perform_analysis(state)
+    # Analysis can create tasks (DB writes); defer while idle so a suspended
+    # compute isn't woken. :activity re-arms the normal cadence.
+    if Acs.IdleTracker.idle?() do
+      Acs.IdleTracker.schedule_tick(:run_analysis, Acs.IdleTracker.sleep_interval_ms())
+      {:noreply, state}
+    else
+      new_state = perform_analysis(state)
+      schedule_analysis()
+      {:noreply, new_state}
+    end
+  end
+
+  def handle_info(:activity, state) do
     schedule_analysis()
-    {:noreply, new_state}
+    {:noreply, state}
   end
 
   # ── Analysis ──
 
   defp schedule_analysis do
-    Process.send_after(self(), :run_analysis, 60_000)
+    Acs.IdleTracker.schedule_tick(:run_analysis, 60_000)
   end
 
   defp perform_analysis(state) do

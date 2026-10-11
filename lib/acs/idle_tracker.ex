@@ -75,6 +75,23 @@ defmodule Acs.IdleTracker do
     Phoenix.PubSub.subscribe(AcsWeb.PubSub, @topic)
   end
 
+  @doc """
+  Arms the calling worker's next tick, cancelling any tick it already has
+  pending for `message`.
+
+  Workers re-arm from both their normal cadence and the `:activity` wake-up.
+  A bare `Process.send_after/3` in both places starts a new self-perpetuating
+  chain each time, so tick frequency multiplies (observed ~60x the intended
+  rate). Keeping one timer ref per `{message}` in the process dictionary
+  guarantees a single pending tick.
+  """
+  def schedule_tick(message, interval) do
+    key = {__MODULE__, :timer, message}
+    if ref = Process.get(key), do: Process.cancel_timer(ref)
+    Process.put(key, Process.send_after(self(), message, interval))
+    :ok
+  end
+
   @impl true
   def init(_opts) do
     :ets.new(@table_name, [
