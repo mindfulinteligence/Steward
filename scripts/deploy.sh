@@ -282,6 +282,19 @@ if ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose config --services 2>/dev/null | grep -
   ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose up -d --no-build --pull missing otel_collector
 fi
 
+# Embedding backend (nomic-embed-text). The app degrades to lexical search without it,
+# so a failure here warns but never blocks the cutover.
+echo "[remote] up ollama"
+if ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose up -d --no-build --no-deps ollama; then
+  if ! docker exec ollama ollama list 2>/dev/null | grep -q '^nomic-embed-text'; then
+    echo "[remote] pulling nomic-embed-text"
+    timeout 600 docker exec ollama ollama pull nomic-embed-text \
+      || echo "[remote] WARN: nomic-embed-text pull failed — run scripts/ensure-ollama-model.sh"
+  fi
+else
+  echo "[remote] WARN: ollama failed to start — embeddings stay unavailable"
+fi
+
 echo "[remote] waiting for ${NEXT_CTR} healthy"
 STATUS="$(wait_healthy "$NEXT_CTR")"
 if [[ "$STATUS" != "healthy" ]]; then
