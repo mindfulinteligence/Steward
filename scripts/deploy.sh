@@ -119,7 +119,7 @@ fi
 # --- sync compose/caddy (deploy + resume; rollback keeps remote compose) ---
 if [[ "$MODE" != "rollback" ]]; then
   info "Syncing compose/caddy bundle to ${SERVER}:${REMOTE_DIR}"
-  ssh "${SERVER}" "mkdir -p '${REMOTE_DIR}/priv' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/caddy'"
+  ssh "${SERVER}" "mkdir -p '${REMOTE_DIR}/priv' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/caddy' '${REMOTE_DIR}/caddy/sites.d'"
   scp "${COMPOSE_FILE}" "${CADDY_FILE}" "${SERVER}:${REMOTE_DIR}/"
   scp scripts/infisical-compose.sh "${SERVER}:${REMOTE_DIR}/scripts/"
   scp scripts/lib/acs_bluegreen.sh "${SERVER}:${REMOTE_DIR}/scripts/lib/"

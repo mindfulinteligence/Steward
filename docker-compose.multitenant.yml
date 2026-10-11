@@ -106,6 +106,9 @@ services:
     volumes:
       - ./Caddyfile.multitenant:/etc/caddy/Caddyfile:ro
       - ./caddy/acs_upstream.caddyfile:/etc/caddy/acs_upstream.caddyfile:ro
+      # Per-app site blocks owned by other repos (e.g. buildmyhouse). Deploys here
+      # never write into this directory, so app configs survive ACS deploys.
+      - ./caddy/sites.d:/etc/caddy/sites.d:ro
       - ./certs:/etc/caddy/certs:ro
       - caddy_data:/data
     environment:
