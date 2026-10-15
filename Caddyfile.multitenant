@@ -42,3 +42,7 @@ mind_chat.{$BASE_DOMAIN} {
     # Blue/green ACS upstream — deploy rewrites caddy/acs_upstream.caddyfile + reload.
     import /etc/caddy/acs_upstream.caddyfile
 }
+
+# Site blocks owned by other apps on this host (one *.caddyfile per app).
+# This repo never writes caddy/sites.d, so a deploy here cannot drop them.
+import /etc/caddy/sites.d/*.caddyfile

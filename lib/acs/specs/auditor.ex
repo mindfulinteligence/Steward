@@ -248,6 +248,14 @@ defmodule Acs.Specs.Auditor do
       {:error, {:all_providers_failed, _} = reason} ->
         {:error, reason}
 
+      # Deterministic: the entry itself is incomplete, so a retry fails identically.
+      {:error, {:missing_required_fields, _} = reason} ->
+        Logger.warning(
+          "[Acs.Specs.Auditor] Skipping #{entry.app}/#{entry.id}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
+
       {:error, reason} ->
         Logger.warning(
           "[Acs.Specs.Auditor] Audit failed for #{entry.app}/#{entry.id}: #{inspect(reason)}. Retrying..."

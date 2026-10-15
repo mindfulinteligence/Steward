@@ -119,7 +119,7 @@ fi
 # --- sync compose/caddy (deploy + resume; rollback keeps remote compose) ---
 if [[ "$MODE" != "rollback" ]]; then
   info "Syncing compose/caddy bundle to ${SERVER}:${REMOTE_DIR}"
-  ssh "${SERVER}" "mkdir -p '${REMOTE_DIR}/priv' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/caddy'"
+  ssh "${SERVER}" "mkdir -p '${REMOTE_DIR}/priv' '${REMOTE_DIR}/scripts/lib' '${REMOTE_DIR}/caddy' '${REMOTE_DIR}/caddy/sites.d'"
   scp "${COMPOSE_FILE}" "${CADDY_FILE}" "${SERVER}:${REMOTE_DIR}/"
   scp scripts/infisical-compose.sh "${SERVER}:${REMOTE_DIR}/scripts/"
   scp scripts/lib/acs_bluegreen.sh "${SERVER}:${REMOTE_DIR}/scripts/lib/"
@@ -280,6 +280,19 @@ ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose up -d --no-build --no-deps "$NEXT_SVC"
 if ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose config --services 2>/dev/null | grep -qx otel_collector; then
   echo "[remote] up otel_collector"
   ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose up -d --no-build --pull missing otel_collector
+fi
+
+# Embedding backend (nomic-embed-text). The app degrades to lexical search without it,
+# so a failure here warns but never blocks the cutover.
+echo "[remote] up ollama"
+if ACS_IMAGE_TAG="$ACS_IMAGE_TAG" compose up -d --no-build --no-deps ollama; then
+  if ! docker exec ollama ollama list 2>/dev/null | grep -q '^nomic-embed-text'; then
+    echo "[remote] pulling nomic-embed-text"
+    timeout 600 docker exec ollama ollama pull nomic-embed-text \
+      || echo "[remote] WARN: nomic-embed-text pull failed — run scripts/ensure-ollama-model.sh"
+  fi
+else
+  echo "[remote] WARN: ollama failed to start — embeddings stay unavailable"
 fi
 
 echo "[remote] waiting for ${NEXT_CTR} healthy"

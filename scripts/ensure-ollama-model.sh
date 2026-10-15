@@ -33,11 +33,16 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
-  log "$CONTAINER container not running — starting via compose"
-  if [[ -f "$REMOTE_DIR/$COMPOSE_FILE" ]]; then
-    docker compose -f "$REMOTE_DIR/$COMPOSE_FILE" up -d ollama
-  else
+  log "$CONTAINER container not running — starting"
+  # Plain `docker compose` fails on the stack's required secrets (SECRET_KEY_BASE etc.),
+  # so restart an existing container directly and only fall back to compose via the
+  # Infisical wrapper when the container has to be created.
+  if docker ps -a --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker start "$CONTAINER"
+  elif [[ -x "$REMOTE_DIR/scripts/infisical-compose.sh" ]]; then
+    "$REMOTE_DIR/scripts/infisical-compose.sh" -f "$REMOTE_DIR/$COMPOSE_FILE" up -d --no-deps ollama
+  else
+    docker compose -f "$REMOTE_DIR/$COMPOSE_FILE" up -d --no-deps ollama
   fi
   for _ in $(seq 1 30); do
     docker ps --format '{{.Names}}' | grep -qx "$CONTAINER" && break
