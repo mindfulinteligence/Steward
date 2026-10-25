@@ -39,6 +39,9 @@ ENV MIX_ENV=prod
 ARG REPO_ADAPTER=postgres
 ENV REPO_ADAPTER=${REPO_ADAPTER}
 
+ARG FORCE_SSL=true
+ENV FORCE_SSL=${FORCE_SSL}
+
 # ponytail: compile-only dummy; runtime SECRET_KEY_BASE comes from compose/env
 ARG SECRET_KEY_BASE=build_time_secret_key_base_not_used_at_runtime
 
