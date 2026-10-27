@@ -751,13 +751,21 @@ defmodule Acs.MCP.Tools.CoreHandlers do
             status: t.status,
             kind: Map.get(t, :kind) || "coordination",
             created_by_agent: t.created_by_agent,
-            locked_by_agent: t.locked_by_agent
+            locked_by_agent: t.locked_by_agent,
+            created_at: task_timestamp(Map.get(t, :inserted_at)),
+            updated_at: task_timestamp(Map.get(t, :updated_at))
           }
         end)
 
       {:ok, %{tasks: formatted, count: length(formatted), kind: "coordination"}}
     end
   end
+
+  # ISO-8601 for list_tasks output; nil when the record carries no timestamp.
+  def task_timestamp(nil), do: nil
+  def task_timestamp(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  def task_timestamp(%NaiveDateTime{} = dt), do: NaiveDateTime.to_iso8601(dt) <> "Z"
+  def task_timestamp(other), do: to_string(other)
 
   defp list_user_tasks(args) do
     org = authenticated_org(args)
@@ -786,7 +794,9 @@ defmodule Acs.MCP.Tools.CoreHandlers do
                 kind: "user",
                 assignee: t.assignee,
                 due_at: t.due_at,
-                remind_at: t.remind_at
+                remind_at: t.remind_at,
+                created_at: task_timestamp(Map.get(t, :inserted_at)),
+                updated_at: task_timestamp(Map.get(t, :updated_at))
               }
             end)
 
